@@ -113,7 +113,7 @@ class TunnelManager(private val context: Context) {
     fun loadConfig(): TunnelManagerConfig {
         val file = File(tunnelsDir, "tunnel_manager.json")
         return if (file.exists()) {
-            try { com.google.gson.Gson().fromJson(file.readText(), TunnelManagerConfig::class.java) } catch (_: Exception) { TunnelManagerConfig() }
+            try { com.google.gson.Gson().fromJson(file.readText(), TunnelManagerConfig::class.java) } catch (ignored: Exception) { TunnelManagerConfig() }
         } else TunnelManagerConfig()
     }
 

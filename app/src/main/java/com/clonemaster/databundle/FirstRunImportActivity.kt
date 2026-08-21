@@ -248,7 +248,7 @@ class FirstRunImportActivity : AppCompatActivity() {
             finish()
         } catch (e: Exception) {
             android.util.Log.e("CloneMaster", "launchClonedApp failed: ${e.message}", e)
-            try { finish() } catch (_: Exception) {}
+            try { finish() } catch (ignored: Exception) {}
         }
     }
 

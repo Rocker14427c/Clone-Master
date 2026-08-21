@@ -240,7 +240,7 @@ class ManifestTransformer {
         val isBinary = try {
             val bytes = axmlFile.readBytes().take(100)
             bytes.contains(0.toByte())
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
 
         if (isBinary) {
             // Return warning that binary AXML transformation is not fully implemented without apktool

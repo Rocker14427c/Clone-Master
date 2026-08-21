@@ -30,8 +30,8 @@ object HookFramework {
             val hasBundledData = try {
                 context.assets.open("data/archive.zip").close()
                 true
-            } catch (_: Exception) {
-                try { context.assets.open("data_manifest.json").close(); true } catch (_: Exception) { false }
+            } catch (ignored: Exception) {
+                try { context.assets.open("data_manifest.json").close(); true } catch (ignored: Exception) { false }
             }
             val prefs = context.getSharedPreferences("clone_migration", Context.MODE_PRIVATE)
             val migrationCompleted = prefs.getBoolean("migration_completed", false)
@@ -69,7 +69,7 @@ object HookFramework {
         // Order matters – environment spoofing first for consistency
         try {
             // Load device profile for coherent environment
-            val profileJson = try { context.assets.open("device_profile.json").bufferedReader().readText() } catch (_: Exception) { null }
+            val profileJson = try { context.assets.open("device_profile.json").bufferedReader().readText() } catch (ignored: Exception) { null }
             val profile = if (profileJson != null) {
                 Gson().fromJson(profileJson, com.clonemaster.cloning.models.DeviceProfile::class.java)
             } else null
@@ -103,7 +103,7 @@ object HookFramework {
             val profileForCpu = try {
                 val json = context.assets.open("device_profile.json").bufferedReader().readText()
                 Gson().fromJson(json, com.clonemaster.cloning.models.DeviceProfile::class.java)
-            } catch (_: Exception) { null }
+            } catch (ignored: Exception) { null }
             com.clonemaster.identity.CpuInfoSpoofer.Hooks.install(cpuGpuConfig, profileForCpu)
 
             // Hook options – public reference: Safe mode now called Disable hooks, Native hooks
@@ -125,7 +125,7 @@ object HookFramework {
             // Display – Screensaver, Support chat – public reference
             com.clonemaster.display.ScreensaverController.Hooks.install(
                 com.clonemaster.display.ScreensaverController.ScreensaverConfig(
-                    mode = try { com.clonemaster.display.ScreensaverController.ScreensaverMode.valueOf(cfg.parityFeatures.screensaver.mode) } catch (_: Exception) { com.clonemaster.display.ScreensaverController.ScreensaverMode.DEFAULT },
+                    mode = try { com.clonemaster.display.ScreensaverController.ScreensaverMode.valueOf(cfg.parityFeatures.screensaver.mode) } catch (ignored: Exception) { com.clonemaster.display.ScreensaverController.ScreensaverMode.DEFAULT },
                     preventDream = cfg.parityFeatures.screensaver.preventDream
                 )
             )

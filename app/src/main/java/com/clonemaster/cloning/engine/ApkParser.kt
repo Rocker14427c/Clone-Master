@@ -77,7 +77,7 @@ class ApkParser(private val context: Context) {
                 pkgInfo.versionCode.toLong()
             },
             targetSdk = appInfo.targetSdkVersion,
-            minSdk = try { appInfo.minSdkVersion } catch (_: Exception) { 21 },
+            minSdk = try { appInfo.minSdkVersion } catch (ignored: Exception) { 21 },
             isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
             isSplit = splitPaths.isNotEmpty(),
             apkPath = apkPath,
@@ -95,7 +95,7 @@ class ApkParser(private val context: Context) {
             usesPlayServices = usesPlayServices,
             usesBilling = usesBilling,
             usesSafetyNet = usesSafetyNet,
-            sizeBytes = try { File(apkPath).length() } catch (_: Exception) { 0L }
+            sizeBytes = try { File(apkPath).length() } catch (ignored: Exception) { 0L }
         )
     }
 

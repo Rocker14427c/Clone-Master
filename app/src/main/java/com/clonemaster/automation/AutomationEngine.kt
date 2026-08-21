@@ -10,7 +10,7 @@ class AutomationEngine(private val context: Context) {
         config.brightnessOnStart?.let { brightness ->
             try {
                 Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, brightness)
-            } catch (_: Exception) {}
+            } catch (ignored: Exception) {}
         }
         config.dndToggle?.let { enabled ->
             // Toggle DND via NotificationManager
@@ -24,7 +24,7 @@ class AutomationEngine(private val context: Context) {
         config.autoRotateToggle?.let { enabled ->
             try {
                 Settings.System.putInt(context.contentResolver, Settings.System.ACCELEROMETER_ROTATION, if (enabled) 1 else 0)
-            } catch (_: Exception) {}
+            } catch (ignored: Exception) {}
         }
         if (config.clipboardOnStart.isNotEmpty()) {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -36,7 +36,7 @@ class AutomationEngine(private val context: Context) {
                 val intent = android.content.Intent("net.dinglisch.android.taskerm.ACTION_TASK")
                 intent.putExtra("task_name", task)
                 context.sendBroadcast(intent)
-            } catch (_: Exception) {}
+            } catch (ignored: Exception) {}
         }
         // Flashlight
         if (config.flashlightWhileOpen) {

@@ -39,7 +39,7 @@ class StorageIsolation(private val context: Context) {
                     }
                     f.deleteRecursively()
                 }
-            } catch (_: Exception) {}
+            } catch (ignored: Exception) {}
         }
     }
 

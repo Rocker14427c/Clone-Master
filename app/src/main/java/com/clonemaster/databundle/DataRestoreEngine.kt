@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import com.clonemaster.cloning.models.*
 import java.io.File
+import java.io.IOException
 
 /**
  * Installation process: First-run import screen, progress, extraction, transformation, validation, rollback, log, retry
@@ -62,7 +63,7 @@ class DataRestoreEngine(private val context: Context) {
                     importLog.appendLine("Detected bundled data in assets/$path -> ${outFile.absolutePath}")
                     return outFile
                 }
-            } catch (_: Exception) { continue }
+            } catch (ignored: Exception) { continue }
         }
 
         val dataFiles = context.filesDir.listFiles { f -> f.extension == "cmb" || f.name.contains("data") } ?: emptyArray()
@@ -260,7 +261,7 @@ class DataRestoreEngine(private val context: Context) {
 
             } finally {
                 // Cleanup extract dir
-                try { extractDir.deleteRecursively() } catch (_: Exception) {}
+                try { extractDir.deleteRecursively() } catch (ignored: Exception) {}
             }
 
         } catch (e: Exception) {
@@ -398,7 +399,7 @@ class DataRestoreEngine(private val context: Context) {
     private fun verifyFinalDataDir(dataDir: File): Boolean {
         return try {
             dataDir.exists() && dataDir.listFiles()?.isNotEmpty() == true
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     private fun rollback() {

@@ -208,13 +208,13 @@ class DeviceProfileManager(private val context: Context) {
         getBuiltInProfiles().find { it.id == id }?.let { return it }
         val file = File(profilesDir, "$id.json")
         if (!file.exists()) return null
-        return try { gson.fromJson(file.readText(), DeviceProfile::class.java) } catch (_: Exception) { null }
+        return try { gson.fromJson(file.readText(), DeviceProfile::class.java) } catch (ignored: Exception) { null }
     }
 
     fun listProfiles(): List<DeviceProfile> {
         val builtIn = getBuiltInProfiles()
         val custom = profilesDir.listFiles()?.mapNotNull {
-            try { gson.fromJson(it.readText(), DeviceProfile::class.java) } catch (_: Exception) { null }
+            try { gson.fromJson(it.readText(), DeviceProfile::class.java) } catch (ignored: Exception) { null }
         } ?: emptyList()
         return builtIn + custom
     }

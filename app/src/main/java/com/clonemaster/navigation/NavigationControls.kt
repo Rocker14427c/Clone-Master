@@ -17,7 +17,7 @@ class NavigationControls {
             android.graphics.PixelFormat.TRANSLUCENT
         )
         btn.setOnClickListener { activity.onBackPressed() }
-        try { wm.addView(btn, params) } catch (_: Exception) {}
+        try { wm.addView(btn, params) } catch (ignored: Exception) {}
     }
 
     object Hooks {

@@ -57,7 +57,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.github.bumptech.glide:glide:4.16.0")
     implementation("net.dongliu:apk-parser:2.6.10")
-    implementation("com.jaredrummler:apkparser:3.0.0-alpha2")
     implementation("org.ow2.asm:asm:9.6")
     implementation("org.ow2.asm:asm-commons:9.6")
     implementation("com.google.code.gson:gson:2.10.1")

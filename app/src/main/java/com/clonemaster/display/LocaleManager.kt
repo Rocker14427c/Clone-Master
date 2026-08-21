@@ -35,7 +35,7 @@ class LocaleManager {
             try {
                 val localeManager = context.getSystemService(Context.LOCALE_SERVICE) as android.app.LocaleManager
                 localeManager.applicationLocales = LocaleList(locale)
-            } catch (_: Exception) {}
+            } catch (ignored: Exception) {}
             // Also update configuration for compatibility
             configuration.setLocale(locale)
             context.createConfigurationContext(configuration)
@@ -60,7 +60,7 @@ class LocaleManager {
             } else {
                 Locale(localeStr)
             }
-        } catch (_: Exception) {
+        } catch (ignored: Exception) {
             Locale(localeStr)
         }
     }

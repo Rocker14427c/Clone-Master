@@ -35,7 +35,7 @@ class LayoutInspectorV2 {
     }
 
     private fun inspectView(view: View, depth: Int): InspectedView {
-        val idName = try { view.resources.getResourceEntryName(view.id) } catch (_: Exception) { "no-id" }
+        val idName = try { view.resources.getResourceEntryName(view.id) } catch (ignored: Exception) { "no-id" }
         val text = (view as? TextView)?.text?.toString() ?: ""
         val loc = IntArray(2)
         view.getLocationOnScreen(loc)

@@ -10,7 +10,7 @@ class CloneMasterApp : MultiDexApplication() {
         // Load native libs if present
         try {
             System.loadLibrary("appcloner")
-        } catch (_: Exception) {
+        } catch (ignored: Throwable) {
             // lib not present yet – will be injected into clones, not host
         }
     }

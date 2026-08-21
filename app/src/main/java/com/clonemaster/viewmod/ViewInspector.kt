@@ -25,7 +25,7 @@ class ViewInspector {
     }
 
     private fun dumpView(view: View): ViewNode {
-        val idName = try { view.resources.getResourceEntryName(view.id) } catch (_: Exception) { "no-id" }
+        val idName = try { view.resources.getResourceEntryName(view.id) } catch (ignored: Exception) { "no-id" }
         val text = (view as? android.widget.TextView)?.text?.toString() ?: ""
         val loc = IntArray(2)
         view.getLocationOnScreen(loc)
@@ -70,7 +70,7 @@ class ViewModificationEngine {
                     )
                 )
             }
-        } catch (_: Exception) {}
+        } catch (ignored: Exception) {}
     }
 
     fun apply(activity: Activity) {
@@ -82,7 +82,7 @@ class ViewModificationEngine {
         rules.filter { it.enabled && (it.activityPattern == "*" || activityName.contains(it.activityPattern)) }.forEach { rule ->
             val matches = when {
                 rule.viewIdName.isNotEmpty() -> {
-                    try { view.resources.getResourceEntryName(view.id) == rule.viewIdName } catch (_: Exception) { false }
+                    try { view.resources.getResourceEntryName(view.id) == rule.viewIdName } catch (ignored: Exception) { false }
                 }
                 rule.searchText.isNotEmpty() -> {
                     (view as? android.widget.TextView)?.text?.toString()?.contains(rule.searchText) == true
@@ -121,7 +121,7 @@ class ViewModificationEngine {
                     view.textSize = s.toFloat()
                 }
             }
-        } catch (_: Exception) {}
+        } catch (ignored: Exception) {}
     }
 
     fun saveRules(): String {

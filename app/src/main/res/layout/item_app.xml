@@ -1,8 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="8dp">
-  <LinearLayout android:orientation="vertical" android:padding="12dp" android:layout_width="match_parent" android:layout_height="wrap_content">
-    <TextView android:id="@+id/appName" android:textSize="16sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-    <TextView android:id="@+id/packageName" android:textSize="12sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-    <TextView android:id="@+id/version" android:textSize="12sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="8dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="4dp"
+    android:foreground="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+  <LinearLayout android:orientation="horizontal" android:padding="12dp" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
+
+    <ImageView android:id="@+id/appIcon" android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="App Icon"/>
+
+    <LinearLayout android:orientation="vertical" android:paddingStart="12dp" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content">
+      <TextView android:id="@+id/appName" android:textSize="16sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+      <TextView android:id="@+id/packageName" android:textSize="12sp" android:textColor="#757575" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+      <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp">
+        <TextView android:id="@+id/version" android:textSize="11sp" android:background="#E3F2FD" android:padding="2dp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+        <TextView android:id="@+id/targetSdk" android:textSize="11sp" android:background="#FFF3E0" android:padding="2dp" android:layout_marginStart="4dp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+      </LinearLayout>
+    </LinearLayout>
+
+    <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@android:drawable/ic_menu_more" android:contentDescription="More"/>
+
   </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

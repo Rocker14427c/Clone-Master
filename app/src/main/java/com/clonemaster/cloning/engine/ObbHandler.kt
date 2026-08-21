@@ -16,7 +16,7 @@ class ObbHandler {
         if (!src.exists()) return
         val assetsObb = File(decodedDir, "assets/obb").apply { mkdirs() }
         src.listFiles()?.forEach { file ->
-            try { file.copyTo(File(assetsObb, file.name), overwrite=true) } catch (_: Exception) {}
+            try { file.copyTo(File(assetsObb, file.name), overwrite=true) } catch (ignored: Exception) {}
         }
     }
 }

@@ -28,7 +28,7 @@
     <string name="developer">Developer / Advanced</string>
     <string name="webview_toolkit">WebView Toolkit</string>
     <string name="ai_assisted">AI-Assisted Controls</string>
-</resources>
+
     <string name="environment_spoofing">Environment Spoofing / Detection Mitigation</string>
     <string name="hide_root">Hide Root</string>
     <string name="hide_emulator">Hide Emulator</string>
@@ -54,3 +54,4 @@
     <string name="finalizing">Finalizing...</string>
     <string name="data_import_complete">Data import complete</string>
     <string name="keystore_warning">Some account/session data could not be restored because it is protected by Android or the application.</string>
+</resources>

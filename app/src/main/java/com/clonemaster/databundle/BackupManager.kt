@@ -302,7 +302,7 @@ class BackupManager(private val context: Context) {
                         val json = zip.getInputStream(manifestEntry).bufferedReader().readText()
                         val map = com.google.gson.Gson().fromJson(json, Map::class.java)
                         clonePackage = map["clonePackage"] as? String ?: "unknown"
-                        backupType = try { BackupType.valueOf(map["backupType"] as? String ?: "CLONE_AND_DATA") } catch (_: Exception) { BackupType.CLONE_AND_DATA }
+                        backupType = try { BackupType.valueOf(map["backupType"] as? String ?: "CLONE_AND_DATA") } catch (ignored: Exception) { BackupType.CLONE_AND_DATA }
                     }
                 }
                 BackupInfo(
@@ -317,7 +317,7 @@ class BackupManager(private val context: Context) {
                     includesData = true,
                     includesApk = true
                 )
-            } catch (_: Exception) { null }
+            } catch (ignored: Exception) { null }
         } ?: emptyList()
     }
 
@@ -326,7 +326,7 @@ class BackupManager(private val context: Context) {
             java.util.zip.ZipFile(backupFile).use { zip ->
                 zip.getEntry("manifest.json") != null && zip.getEntry("checksums.sha256") != null
             }
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     private fun calculateSha256(file: File): String {

@@ -14,7 +14,7 @@ class GameFeatures(private val context: Context) {
             val dest = File("/sdcard/Android/obb/$clonePackage")
             dest.mkdirs()
             obbDir.listFiles()?.forEach { f ->
-                try { f.copyTo(File(dest, f.name), overwrite = true) } catch (_: Exception) {}
+                try { f.copyTo(File(dest, f.name), overwrite = true) } catch (ignored: Exception) {}
             }
         }
 

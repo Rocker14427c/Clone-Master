@@ -53,7 +53,7 @@ class SneezeExitDetector(private val context: Context, private val onSneeze: () 
 
     fun stop() {
         sensorManager?.unregisterListener(this)
-        try { mediaRecorder?.stop(); mediaRecorder?.release() } catch (_: Exception) {}
+        try { mediaRecorder?.stop(); mediaRecorder?.release() } catch (ignored: Exception) {}
         mediaRecorder = null
         isListening = false
     }
@@ -84,7 +84,7 @@ class SneezeExitDetector(private val context: Context, private val onSneeze: () 
                                 checkSneezePattern()
                             }
                         }
-                    } catch (_: Exception) {}
+                    } catch (ignored: Exception) {}
                     handler.postDelayed(this, 200)
                 }
             })

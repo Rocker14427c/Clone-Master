@@ -323,7 +323,7 @@ class EmulatorHideManager(private val context: Context) {
             val clazz = Class.forName("android.os.SystemProperties")
             val method = clazz.getMethod("get", String::class.java)
             method.invoke(null, key) as String
-        } catch (_: Exception) { "" }
+        } catch (ignored: Exception) { "" }
     }
 
     private fun checkEmulatorTelephony(): Boolean {
@@ -335,7 +335,7 @@ class EmulatorHideManager(private val context: Context) {
         return try {
             val interfaces = java.net.NetworkInterface.getNetworkInterfaces()?.toList() ?: emptyList()
             interfaces.any { it.name == "eth0" && interfaces.none { n -> n.name == "wlan0" } }
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     private fun checkEmulatorSensors(): Boolean {
@@ -343,40 +343,40 @@ class EmulatorHideManager(private val context: Context) {
             val sm = context.getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
             val sensors = sm.getSensorList(android.hardware.Sensor.TYPE_ALL)
             sensors.isEmpty() || sensors.any { it.vendor.contains("Google", true) && it.name.contains("Goldfish", true) }
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     private fun checkEmulatorCamera(): Boolean {
         return try {
             val cm = context.getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
             cm.cameraIdList.isEmpty()
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     private fun checkEmulatorBattery(): Boolean {
         return try {
             val bm = context.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
-            !bm.isCharging && false // simplified
-        } catch (_: Exception) { false }
+            false // QA Fix: BatteryManager.isCharging() is method not property, simplified to false to prevent compilation error, independent implementation
+        } catch (ignored: Exception) { false }
     }
 
     private fun checkAdb(): Boolean {
         return try {
             android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.ADB_ENABLED, 0) == 1
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     private fun checkDevOptions(): Boolean {
         return try {
             android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     private fun checkKernelQemu(): Boolean {
         return try {
             val procVersion = File("/proc/version").readText()
             procVersion.contains("goldfish", true) || procVersion.contains("ranchu", true) || procVersion.contains("qemu", true)
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     object Hooks {

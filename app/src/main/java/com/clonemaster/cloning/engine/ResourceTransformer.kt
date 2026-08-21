@@ -71,7 +71,7 @@ class ResourceTransformer {
                     diagnostics.error("Custom icon file ${customIconFile.path} is 0 bytes – skipping to avoid corrupting resources")
                 } else {
                     // Validate it's decodable
-                    val testBitmap = try { BitmapFactory.decodeFile(customIconFile.absolutePath) } catch (_: Exception) { null }
+                    val testBitmap = try { BitmapFactory.decodeFile(customIconFile.absolutePath) } catch (ignored: Exception) { null }
                     if (testBitmap == null) {
                         diagnostics.warn("Custom icon ${customIconFile.path} is not a valid bitmap (may be XML adaptive icon) – skipping bitmap replacement, will handle adaptive icons separately")
                     } else {

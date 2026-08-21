@@ -84,7 +84,7 @@ class HttpProxyListManager(private val context: Context) {
 
     fun loadConfig(): ProxyListConfig {
         return if (configFile.exists()) {
-            try { com.google.gson.Gson().fromJson(configFile.readText(), ProxyListConfig::class.java) } catch (_: Exception) { ProxyListConfig() }
+            try { com.google.gson.Gson().fromJson(configFile.readText(), ProxyListConfig::class.java) } catch (ignored: Exception) { ProxyListConfig() }
         } else ProxyListConfig()
     }
 

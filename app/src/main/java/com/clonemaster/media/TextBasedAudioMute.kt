@@ -39,7 +39,7 @@ class TextBasedAudioMute {
                 } else if (!shouldMute && isMuted) {
                     unmuteAudio(activity)
                 }
-            } catch (_: Exception) {}
+            } catch (ignored: Exception) {}
         }
     }
 
@@ -56,7 +56,7 @@ class TextBasedAudioMute {
             val am = activity.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
             am.setStreamMute(android.media.AudioManager.STREAM_MUSIC, true)
             isMuted = true
-        } catch (_: Exception) {}
+        } catch (ignored: Exception) {}
     }
 
     private fun unmuteAudio(activity: Activity) {
@@ -64,7 +64,7 @@ class TextBasedAudioMute {
             val am = activity.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
             am.setStreamMute(android.media.AudioManager.STREAM_MUSIC, false)
             isMuted = false
-        } catch (_: Exception) {}
+        } catch (ignored: Exception) {}
     }
 
     object Hooks {

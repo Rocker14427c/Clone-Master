@@ -53,7 +53,7 @@ class SupportChatOverlay(private val context: Context) {
                         data = Uri.parse("mailto:${config.supportEmail}")
                     }
                     activity.startActivity(intent)
-                } catch (_: Exception) {}
+                } catch (ignored: Exception) {}
             }
         }
 
@@ -63,7 +63,7 @@ class SupportChatOverlay(private val context: Context) {
                 try {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(config.telegramLink))
                     activity.startActivity(intent)
-                } catch (_: Exception) {}
+                } catch (ignored: Exception) {}
             }
         }
 
@@ -88,7 +88,7 @@ class SupportChatOverlay(private val context: Context) {
         try {
             wm.addView(layout, params)
             // Auto-remove after 10 sec
-            layout.postDelayed({ try { wm.removeView(layout) } catch (_: Exception) {} }, 10000)
+            layout.postDelayed({ try { wm.removeView(layout) } catch (ignored: Exception) {} }, 10000)
         } catch (e: Exception) {
             // No overlay permission – degrade gracefully, show Toast with support info
             android.widget.Toast.makeText(activity, "Support: ${config.supportEmail}", android.widget.Toast.LENGTH_LONG).show()

@@ -184,7 +184,7 @@ class RootHideManager(private val context: Context) {
 
     private fun checkSuBinary(): Boolean {
         return SU_PATHS.any { path ->
-            try { File(path).exists() || File(path + "su").exists() } catch (_: Exception) { false }
+            try { File(path).exists() || File(path + "su").exists() } catch (ignored: Exception) { false }
         }
     }
 
@@ -192,9 +192,9 @@ class RootHideManager(private val context: Context) {
         return try {
             val pm = context.packageManager
             ROOT_MANAGEMENT_APPS.any { pkg ->
-                try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
+                try { pm.getPackageInfo(pkg, 0); true } catch (ignored: Exception) { false }
             }
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     private fun checkMagisk(): Boolean {
@@ -205,23 +205,23 @@ class RootHideManager(private val context: Context) {
         return try {
             val file = File("/system/test_root_write")
             file.createNewFile().also { if (it) file.delete() }
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     private fun checkExecSu(): Boolean {
         return try {
             Runtime.getRuntime().exec("su").destroy()
             true
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     private fun checkRootCloakingApps(): Boolean {
         return try {
             val pm = context.packageManager
             ROOT_CLOAKING_APPS.any { pkg ->
-                try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
+                try { pm.getPackageInfo(pkg, 0); true } catch (ignored: Exception) { false }
             }
-        } catch (_: Exception) { false }
+        } catch (ignored: Exception) { false }
     }
 
     /**

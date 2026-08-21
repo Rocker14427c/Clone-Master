@@ -36,7 +36,7 @@ class IdentityManager(private val context: Context) {
         if (!file.exists()) return null
         return try {
             com.google.gson.Gson().fromJson(file.readText(), IdentityConfig::class.java)
-        } catch (_: Exception) { null }
+        } catch (ignored: Exception) { null }
     }
 
     /**

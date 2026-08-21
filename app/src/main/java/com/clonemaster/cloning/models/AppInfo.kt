@@ -10,7 +10,7 @@ data class AppInfo(
     val compileSdk: Int? = null,
     val isSystemApp: Boolean = false,
     val isSplit: Boolean = false,
-    val apkPath: String,
+    val apkPath: String = "",
     val splitPaths: List<String> = emptyList(),
     val activities: List<String> = emptyList(),
     val services: List<String> = emptyList(),

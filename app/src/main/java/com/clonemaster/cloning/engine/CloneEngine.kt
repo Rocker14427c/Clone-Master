@@ -80,7 +80,7 @@ class CloneEngine(private val context: Context) {
             try {
                 val manifestCategoryHandler = ManifestCategoryHandler()
                 val manifestOptions = ManifestCategoryHandler.ManifestOptions(
-                    appCategory = try { ManifestCategoryHandler.AppCategory.valueOf(config.parityFeatures.manifestOptions.appCategory.uppercase()) } catch (_: Exception) { ManifestCategoryHandler.AppCategory.UNDEFINED },
+                    appCategory = try { ManifestCategoryHandler.AppCategory.valueOf(config.parityFeatures.manifestOptions.appCategory.uppercase()) } catch (ignored: Exception) { ManifestCategoryHandler.AppCategory.UNDEFINED },
                     largeHeap = config.parityFeatures.manifestOptions.largeHeap
                 )
                 manifestCategoryHandler.apply(manifestFile, manifestOptions, config, diagnostics)
@@ -305,7 +305,7 @@ class CloneEngine(private val context: Context) {
                     File(manifestDir, "${config.clonePackage}.json").writeText(
                         com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(dataManifest)
                     )
-                } catch (_: Exception) {}
+                } catch (ignored: Exception) {}
             }
 
             Result.success(finalApk)
@@ -327,7 +327,7 @@ class CloneEngine(private val context: Context) {
             proc.waitFor()
             val path = proc.inputStream.bufferedReader().readText().trim()
             if (path.isNotEmpty()) path else null
-        } catch (_: Exception) { null }
+        } catch (ignored: Exception) { null }
     }
 
     private fun unzipApk(apk: File, outDir: File) {
@@ -401,7 +401,7 @@ class CloneEngine(private val context: Context) {
             dir.mkdirs()
             val file = File(dir, "${config.clonePackage}.json")
             file.writeText(gsonConfig(config))
-        } catch (_: Exception) {}
+        } catch (ignored: Exception) {}
     }
 
     fun getDiagnostics(): CloningDiagnostics = diagnostics
