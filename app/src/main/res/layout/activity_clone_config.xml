@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp">
+
+        <TextView android:text="Clone Configuration" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+
+        <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Clone Package">
+            <com.google.android.material.textfield.TextInputEditText android:id="@+id/clonePackage" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="App Name">
+            <com.google.android.material.textfield.TextInputEditText android:id="@+id/appName" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Categories would be dynamically added -->
+        <TextView android:id="@+id/categories" android:text="Categories: Core, Identity, Privacy, Display, ViewMod, Media, Navigation, Storage, Launching, Networking, Notification, Game, TV/Wear, Automation, Developer, WebView, AI" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="16dp"/>
+
+        <Button android:id="@+id/save" android:text="Save &amp; Clone" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp"/>
+        <Button android:id="@+id/export" android:text="Export Config" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <Button android:id="@+id/backup" android:text="Backup APK" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+
+    </LinearLayout>
+</ScrollView>

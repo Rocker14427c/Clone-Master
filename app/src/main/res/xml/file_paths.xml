@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <external-files-path name="clones" path="clones/" />
+    <external-files-path name="exports" path="exports/" />
+    <files-path name="internal" path="." />
+    <cache-path name="cache" path="." />
+</paths>

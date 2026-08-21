@@ -1,0 +1,42 @@
+# Android
+.gradle/
+build/
+build_out/
+app/build/
+core/build/
+local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+keystore/
+captures/
+.externalNativeBuild/
+.cxx/
+*.iml
+.idea/
+
+# Secrets
+.env
+.env.local
+github_token.txt
+token.txt
+**/secrets.properties
+**/secure.properties
+
+# Decompiled reference (large)
+Next-Cloner-ref/
+original/
+decompiled/
+
+# Swap
+/swapfile
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python / other
+__pycache__/
+.venv/
+node_modules/

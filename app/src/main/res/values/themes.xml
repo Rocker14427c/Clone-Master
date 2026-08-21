@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.CloneMaster" parent="Theme.Material3.DayNight">
+        <item name="colorPrimary">#2196F3</item>
+        <item name="colorPrimaryVariant">#1976D2</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+    </style>
+    <style name="Theme.CloneMaster.Calculator" parent="Theme.CloneMaster">
+        <item name="android:windowBackground">#121212</item>
+    </style>
+</resources>

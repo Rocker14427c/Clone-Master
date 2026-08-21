@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Clone-Master</string>
+    <string name="installed_apps">Installed Apps</string>
+    <string name="clones">Clones</string>
+    <string name="clone">Clone</string>
+    <string name="analyze">Analyze</string>
+    <string name="search_hint">Search features: GPS, proxy, clipboard, dark mode, WebView, notification...</string>
+    <string name="batch_clone">Batch Clone</string>
+    <string name="export_apk">Export APK</string>
+    <string name="backup">Backup</string>
+    <string name="restore">Restore</string>
+    <string name="reclone">Reclone / Update</string>
+    <string name="compatibility_report">Compatibility Report</string>
+    <string name="identity">Identity &amp; Fingerprint</string>
+    <string name="privacy">Privacy &amp; Isolation</string>
+    <string name="display">Display &amp; UI</string>
+    <string name="viewmod">View &amp; Layout Mod</string>
+    <string name="media">Media, Audio &amp; Hardware</string>
+    <string name="navigation">Navigation &amp; Interaction</string>
+    <string name="storage">Storage &amp; Data</string>
+    <string name="launching">Launching &amp; Background</string>
+    <string name="networking">Networking &amp; Proxy</string>
+    <string name="notification">Notification Controls</string>
+    <string name="game">Game Features</string>
+    <string name="tvwear">Android TV / Wear OS</string>
+    <string name="automation">Automation</string>
+    <string name="developer">Developer / Advanced</string>
+    <string name="webview_toolkit">WebView Toolkit</string>
+    <string name="ai_assisted">AI-Assisted Controls</string>
+</resources>
