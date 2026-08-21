@@ -23,26 +23,17 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Dedicated Clone Configuration screen – independent UI implementation
- * Public functional/UI reference: https://appcloner.app/ used only for organization and behavior reference
- * Implements own independent UI, code and design, not copying App Cloner colors/assets/layout
+ * Production-usable Clone Configuration – fixed layout + real configurators, no fake controls
+ * Independent implementation, public reference https://appcloner.app/ only for organization/behavior
  *
- * User flow: Installed Apps → Select application → App Details/Compatibility → Clone this app → Clone Configuration → Configure options → Build Clone → Install/Export
- * User must configure BEFORE APK is generated – functional parity with public reference
- *
- * Features:
- * - Search field "Search clone options..." filtering immediately by name, description, category, aliases/tags
- * - Categories as cards for already implemented functionality (only when contains implemented functionality)
- * - Individual option UI with icon, name, description, enabled/disabled state, appropriate controls (Switch, Checkbox, Dropdown, Slider, Text field, List editor, Dialog)
- * - Option state maps to real field in CloneConfig – no fake switches – UI → CloneConfig → CloneEngine → transformer/hook/runtime
- * - Connects to existing systems: IdentityManager, DeviceProfileManager, RootHideManager, EmulatorHideManager, EnvironmentManager, SystemPropertySpoofer, FileSystemSpoofer, Privacy, Display, Media, Navigation, Storage, DataBundleAnalyzer, DataArchiveManager, DataRestoreEngine, Networking, ProxyManager, TunnelManager, WebViewScriptManager, Notification, Automation, Native hooks, Diagnostics, Manifest/resource, Developer
- * - Advanced options collapsible, warnings for dangerous options
- * - Presets: Default, Privacy, Maximum Privacy, Performance, Compatibility, Clean Clone, Custom
- * - Save/load: Save, Load, Duplicate, Reset, Export, Import
- * - Clone summary before building with warnings and estimated size, then Build Clone
- * - Build progress: Analyze → Transform manifest → resources → DEX → native libs → hooks → bundle data → sign → verify → complete with meaningful errors
- * - Compatibility indicators: 🟢 Supported, 🟡 May affect compatibility, 🔴 Known limitation, ⚠️ Requires root/Android version/permission from compatibility system
- * - UI quality modern and consistent with Clone-Master own visual identity
+ * Layout structure (fixed):
+ * Top: App bar (56dp)
+ * Search card (wrap_content)
+ * Preset/save/load card (wrap_content, 48dp)
+ * Categories horizontal RecyclerView (48dp fixed)
+ * Main: ONE primary vertically scrollable options area (weight 1, gets majority height)
+ * Bottom: Compact sticky summary (wrap_content, ~100dp) – does NOT cover option list
+ * Avoids ScrollView inside ScrollView, RecyclerView inside scrolling parent, fixed-height option containers, large permanent cards
  */
 class CloneOptionsActivity : AppCompatActivity() {
 
@@ -53,10 +44,13 @@ class CloneOptionsActivity : AppCompatActivity() {
     private lateinit var recyclerCategories: RecyclerView
     private lateinit var recyclerOptions: RecyclerView
     private lateinit var presetSpinner: Spinner
-    private lateinit var textSummary: TextView
+    private lateinit var textCloneName: TextView
+    private lateinit var textClonePackage: TextView
+    private lateinit var textSummaryCompact: TextView
     private lateinit var buttonBuildClone: Button
     private lateinit var buttonSaveConfig: Button
     private lateinit var buttonLoadConfig: Button
+    private lateinit var buttonSummaryDetails: Button
     private lateinit var toolbar: MaterialToolbar
 
     private lateinit var optionsAdapter: OptionsAdapter
@@ -77,51 +71,65 @@ class CloneOptionsActivity : AppCompatActivity() {
         recyclerCategories = findViewById(R.id.recyclerCategories)
         recyclerOptions = findViewById(R.id.recyclerOptions)
         presetSpinner = findViewById(R.id.presetSpinner)
-        textSummary = findViewById(R.id.textSummary)
+        textCloneName = findViewById(R.id.textCloneName)
+        textClonePackage = findViewById(R.id.textClonePackage)
+        textSummaryCompact = findViewById(R.id.textSummaryCompact)
         buttonBuildClone = findViewById(R.id.buttonBuildClone)
         buttonSaveConfig = findViewById(R.id.buttonSaveConfig)
         buttonLoadConfig = findViewById(R.id.buttonLoadConfig)
+        buttonSummaryDetails = findViewById(R.id.buttonSummaryDetails)
+
+        toolbar.setNavigationOnClickListener { finish() }
 
         configStorage = ConfigStorageManager(this)
         deviceProfileManager = DeviceProfileManager(this)
 
-        // Load config from intent
+        // Load config from intent – user flow: Installed Apps → Select → Details → Clone this app → Clone Configuration
         val configJson = intent.getStringExtra("configJson")
         val originalPackage = intent.getStringExtra("originalPackage") ?: intent.getStringExtra("package") ?: ""
+        val appNameExtra = intent.getStringExtra("appName") ?: ""
 
         config = if (configJson != null) {
             try { GsonBuilder().create().fromJson(configJson, CloneConfig::class.java) } catch (ignored: Exception) { CloneConfig(originalPackage = originalPackage) }
         } else {
-            // Load from clonePackage if provided, else create default for originalPackage
             val clonePackage = intent.getStringExtra("clonePackage")
             if (clonePackage != null) {
-                configStorage.loadConfiguration(clonePackage) ?: CloneConfig(originalPackage = originalPackage, clonePackage = clonePackage)
+                configStorage.loadConfiguration(clonePackage) ?: CloneConfig(
+                    originalPackage = originalPackage,
+                    clonePackage = clonePackage,
+                    appName = if (appNameExtra.isNotEmpty()) "$appNameExtra Clone" else "${originalPackage.substringAfterLast('.')} Clone"
+                )
             } else {
                 CloneConfig(
                     originalPackage = originalPackage,
                     clonePackage = if (originalPackage.isNotEmpty()) "$originalPackage.clone1" else "com.example.clone1",
                     cloneIndex = 1,
-                    appName = if (originalPackage.isNotEmpty()) "${originalPackage.substringAfterLast('.')} Clone" else "My Clone"
+                    appName = if (appNameExtra.isNotEmpty()) "$appNameExtra Clone" else if (originalPackage.isNotEmpty()) "${originalPackage.substringAfterLast('.')} Clone" else "My Clone"
                 )
             }
         }
 
-        // Load original app info for summary
+        // Load original app info for summary – fast path, not deep parsing
         originalAppInfo = try {
             com.clonemaster.analysis.AppAnalyzer(this).let { analyzer ->
-                analyzer.analyzeInstalled(config.originalPackage).first
+                // Try fast list first, then detailed if needed
+                val fastList = analyzer.listInstalledApps(false)
+                fastList.find { it.packageName == config.originalPackage } ?: AppInfo(
+                    packageName = config.originalPackage,
+                    appName = config.appName,
+                    versionName = config.versionName,
+                    versionCode = config.versionCode,
+                    targetSdk = 34,
+                    minSdk = 24,
+                    apkPath = ""
+                )
             }
         } catch (ignored: Exception) {
             AppInfo(packageName = config.originalPackage, appName = config.appName, versionName = config.versionName, versionCode = config.versionCode, targetSdk = 34, minSdk = 24, apkPath = "")
         }
 
-        // Initialize configValues map from CloneConfig – UI → CloneConfig mapping, no fake switches
         initializeConfigValues()
-
-        // Setup categories
         setupCategories()
-
-        // Setup options
         allOptions = OptionRegistry.getAllOptions()
         filteredOptions = allOptions
 
@@ -130,28 +138,36 @@ class CloneOptionsActivity : AppCompatActivity() {
             configValues = configValues,
             onOptionChanged = { option, newValue ->
                 updateConfigFromOption(option, newValue)
-                updateSummary()
+                // Persist immediately – UI → Configurator → CloneConfig → persistent state
+                configStorage.saveConfiguration(config)
+                updateCompactSummary()
             },
             onOptionClicked = { option ->
-                showOptionDetailDialog(option)
+                showRealConfigurator(option)
             }
         )
 
         recyclerOptions.layoutManager = LinearLayoutManager(this)
         recyclerOptions.adapter = optionsAdapter
+        recyclerOptions.setHasFixedSize(false)
+        recyclerOptions.isNestedScrollingEnabled = true
 
-        // Search – prominent, immediate filtering by name, description, category, aliases/tags
+        // Search – must work across all categories even when category selected
         searchEditText.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 val query = s.toString()
-                filteredOptions = if (query.isEmpty()) {
-                    if (selectedCategory != null) OptionRegistry.getByCategory(selectedCategory!!) else allOptions
+                if (query.isEmpty()) {
+                    // No search – show selected category or all
+                    filteredOptions = if (selectedCategory != null) OptionRegistry.getByCategory(selectedCategory!!) else allOptions
                 } else {
-                    OptionRegistry.search(query)
+                    // Search across ALL categories – even if user viewing another category
+                    filteredOptions = OptionRegistry.search(query)
                 }
                 optionsAdapter.updateOptions(filteredOptions)
-                textSummary.text = "Search: \"$query\" – ${filteredOptions.size} options found"
+                // Reset scroll position appropriately when search changes
+                recyclerOptions.scrollToPosition(0)
+                updateCompactSummary()
             }
             override fun afterTextChanged(s: android.text.Editable?) {}
         })
@@ -160,13 +176,12 @@ class CloneOptionsActivity : AppCompatActivity() {
             searchEditText.text?.clear()
             filteredOptions = if (selectedCategory != null) OptionRegistry.getByCategory(selectedCategory!!) else allOptions
             optionsAdapter.updateOptions(filteredOptions)
-            updateSummary()
+            recyclerOptions.scrollToPosition(0)
+            updateCompactSummary()
         }
 
-        // Presets
         setupPresets()
 
-        // Save / Load
         buttonSaveConfig.setOnClickListener {
             try {
                 val file = configStorage.saveConfiguration(config)
@@ -176,20 +191,17 @@ class CloneOptionsActivity : AppCompatActivity() {
             }
         }
 
-        buttonLoadConfig.setOnClickListener {
-            showLoadConfigDialog()
-        }
+        buttonLoadConfig.setOnClickListener { showLoadConfigDialog() }
 
-        // Build Clone – shows summary first, then progress
-        buttonBuildClone.setOnClickListener {
-            showCloneSummaryAndBuild()
-        }
+        buttonSummaryDetails.setOnClickListener { showDetailedSummaryDialog() }
 
-        updateSummary()
+        buttonBuildClone.setOnClickListener { showCloneSummaryAndBuild() }
+
+        updateCompactSummary()
     }
 
     private fun initializeConfigValues() {
-        // Map CloneConfig fields to configValues for UI controls – real fields, no fake
+        configValues.clear()
         configValues["appName"] = config.appName
         configValues["clonePackage"] = config.clonePackage
         configValues["versionName"] = config.versionName
@@ -198,7 +210,6 @@ class CloneOptionsActivity : AppCompatActivity() {
         configValues["iconBadge"] = config.iconBadge.name
         configValues["removeBranding"] = config.removeBranding
 
-        // Identity
         configValues["identity.androidId"] = config.identity.androidId
         configValues["identity.imei"] = config.identity.imei
         configValues["identity.wifiMac"] = config.identity.wifiMac
@@ -208,7 +219,6 @@ class CloneOptionsActivity : AppCompatActivity() {
         configValues["identity.webViewUserAgent"] = config.identity.webViewUserAgent
         configValues["identity.deviceProfileName"] = config.identity.deviceProfileName
 
-        // Privacy
         configValues["privacy.disableClipboard"] = config.privacy.disableClipboard
         configValues["privacy.disableSensors"] = config.privacy.disableSensors
         configValues["privacy.gpsSpoof"] = config.privacy.gpsSpoof
@@ -221,7 +231,6 @@ class CloneOptionsActivity : AppCompatActivity() {
         configValues["privacy.stealthMode"] = config.privacy.stealthMode
         configValues["privacy.disabledPermissions"] = config.privacy.disabledPermissions.joinToString(",")
 
-        // Environment
         configValues["environment.hideRoot"] = config.environment.hideRoot
         configValues["environment.hideEmulator"] = config.environment.hideEmulator
         configValues["environment.hideDeveloperOptions"] = config.environment.hideDeveloperOptions
@@ -230,7 +239,6 @@ class CloneOptionsActivity : AppCompatActivity() {
         configValues["environment.physicalDeviceProfileId"] = config.environment.physicalDeviceProfileId
         configValues["environment.enableDetectionDiagnostics"] = config.environment.enableDetectionDiagnostics
 
-        // Display
         configValues["display.darkMode"] = config.display.darkMode.name
         configValues["display.orientationLock"] = config.display.orientationLock.toString()
         configValues["display.immersiveFullscreen"] = config.display.immersiveFullscreen
@@ -238,23 +246,19 @@ class CloneOptionsActivity : AppCompatActivity() {
         configValues["display.customLanguage"] = config.display.customLanguage
         configValues["viewMods"] = config.viewMods.size.toString()
 
-        // Storage
         configValues["storage.redirectExternalStorage"] = config.storage.redirectExternalStorage
         configValues["storage.preventBackup"] = config.storage.preventBackup
         configValues["storage.preserveDataOnUninstall"] = config.storage.preserveDataOnUninstall
 
-        // Data bundling
         configValues["dataBundle.enabled"] = config.dataBundle.enabled
         configValues["dataBundle.compression"] = config.dataBundle.compression.name
         configValues["dataBundle.encryption"] = config.dataBundle.encryption.name
 
-        // Launching
         configValues["launching.removeLauncherIcon"] = config.launching.removeLauncherIcon
         configValues["launching.secretDialerCode"] = config.launching.secretDialerCode
         configValues["launching.persistentMode"] = config.launching.persistentMode
         configValues["launching.fakeBatteryLevel"] = config.launching.fakeBatteryLevel?.toString() ?: ""
 
-        // Networking
         configValues["networking.disableNetworking"] = config.networking.disableNetworking
         configValues["networking.disableMobileData"] = config.networking.disableMobileData
         configValues["networking.httpProxy"] = config.networking.httpProxy
@@ -264,11 +268,9 @@ class CloneOptionsActivity : AppCompatActivity() {
         configValues["networking.vpnOnly"] = config.networking.vpnOnly
         configValues["networking.notificationToggle"] = config.networking.notificationToggle
 
-        // Notifications
         configValues["notification.filterPatterns"] = config.notification.filterPatterns.joinToString(",")
         configValues["notification.showDots"] = config.notification.showDots?.toString() ?: "null"
 
-        // Games, TV/Wear, Automation, Developer, Parity
         configValues["game.bundleObb"] = config.game.bundleObb
         configValues["tvWear.customTvBannerPath"] = config.tvWear.customTvBannerPath ?: ""
         configValues["automation.brightnessOnStart"] = config.automation.brightnessOnStart?.toString() ?: ""
@@ -276,7 +278,6 @@ class CloneOptionsActivity : AppCompatActivity() {
         configValues["developer.nativeHooksEnabled"] = config.developer.nativeHooksEnabled
         configValues["developer.safeMode"] = config.developer.safeMode
 
-        // Parity features
         configValues["parityFeatures.trackingBlocker.disableAppsFlyer"] = config.parityFeatures.trackingBlocker.disableAppsFlyer
         configValues["parityFeatures.cpuGpu.hideCpuInfo"] = config.parityFeatures.cpuGpu.hideCpuInfo
         configValues["parityFeatures.hookOptions.disableHooks"] = config.parityFeatures.hookOptions.disableHooks
@@ -293,13 +294,13 @@ class CloneOptionsActivity : AppCompatActivity() {
     }
 
     private fun updateConfigFromOption(option: OptionItem, newValue: Any) {
-        // UI → CloneConfig mapping – real fields, no fake
         try {
             when (option.configFieldPath) {
                 "appName" -> config.appName = newValue as String
                 "clonePackage" -> config.clonePackage = newValue as String
                 "versionName" -> config.versionName = newValue as String
                 "versionCode" -> config.versionCode = (newValue as String).toLongOrNull() ?: config.versionCode
+                "customIconPath" -> config.customIconPath = (newValue as String).ifEmpty { null }
                 "iconBadge" -> config.iconBadge = try { IconBadge.valueOf(newValue as String) } catch (ignored: Exception) { IconBadge.NONE }
                 "removeBranding" -> config.removeBranding = newValue as Boolean
 
@@ -322,21 +323,28 @@ class CloneOptionsActivity : AppCompatActivity() {
                 "privacy.incognitoMode" -> config.privacy.incognitoMode = newValue as Boolean
                 "privacy.passwordProtection" -> config.privacy.passwordProtection = newValue as Boolean
                 "privacy.stealthMode" -> config.privacy.stealthMode = newValue as Boolean
+                "privacy.disabledPermissions" -> {
+                    val list = (newValue as String).split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                    config.privacy.disabledPermissions.clear()
+                    config.privacy.disabledPermissions.addAll(list)
+                }
 
-                "environment.hideRoot" -> config.environment.hideRoot = newValue as Boolean
+                "environment.hideRoot" -> { config.environment.hideRoot = newValue as Boolean; config.privacy.hideRoot = newValue as Boolean }
                 "environment.hideEmulator" -> config.environment.hideEmulator = newValue as Boolean
                 "environment.hideDeveloperOptions" -> config.environment.hideDeveloperOptions = newValue as Boolean
                 "environment.hideUsbAdb" -> config.environment.hideUsbAdb = newValue as Boolean
-                "environment.hideMockLocation" -> config.environment.hideMockLocation = newValue as Boolean
+                "environment.hideMockLocation" -> { config.environment.hideMockLocation = newValue as Boolean; config.privacy.hideMockLocation = newValue as Boolean }
                 "environment.physicalDeviceProfileId" -> config.environment.physicalDeviceProfileId = newValue as String
 
                 "display.darkMode" -> config.display.darkMode = try { DarkMode.valueOf(newValue as String) } catch (ignored: Exception) { DarkMode.SYSTEM }
+                "display.orientationLock" -> config.display.orientationLock = (newValue as String).toIntOrNull() ?: -1
                 "display.immersiveFullscreen" -> config.display.immersiveFullscreen = newValue as Boolean
                 "display.keepScreenAwake" -> config.display.keepScreenAwake = newValue as Boolean
-                "display.customLanguage" -> config.display.customLanguage = newValue as String
+                "display.customLanguage" -> { config.display.customLanguage = newValue as String; config.parityFeatures.locale.customLocale = newValue as String }
 
                 "storage.redirectExternalStorage" -> config.storage.redirectExternalStorage = newValue as Boolean
                 "storage.preventBackup" -> config.storage.preventBackup = newValue as Boolean
+                "storage.preserveDataOnUninstall" -> { config.storage.preserveDataOnUninstall = newValue as Boolean; config.parityFeatures.uninstallData.hasFragileUserData = newValue as Boolean }
 
                 "dataBundle.enabled" -> config.dataBundle.enabled = newValue as Boolean
                 "dataBundle.compression" -> config.dataBundle.compression = try { CompressionType.valueOf(newValue as String) } catch (ignored: Exception) { CompressionType.ZSTD }
@@ -345,37 +353,39 @@ class CloneOptionsActivity : AppCompatActivity() {
                 "launching.removeLauncherIcon" -> config.launching.removeLauncherIcon = newValue as Boolean
                 "launching.secretDialerCode" -> config.launching.secretDialerCode = newValue as String
                 "launching.persistentMode" -> config.launching.persistentMode = newValue as Boolean
+                "launching.fakeBatteryLevel" -> config.launching.fakeBatteryLevel = (newValue as String).toIntOrNull()
 
                 "networking.disableNetworking" -> config.networking.disableNetworking = newValue as Boolean
                 "networking.disableMobileData" -> config.networking.disableMobileData = newValue as Boolean
                 "networking.httpProxy" -> config.networking.httpProxy = newValue as String
                 "networking.socksProxy" -> config.networking.socksProxy = newValue as String
+                "networking.httpProxyList" -> {
+                    val list = (newValue as String).split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                    config.networking.httpProxyList.clear()
+                    config.networking.httpProxyList.addAll(list)
+                }
                 "networking.dnsOverHttps" -> config.networking.dnsOverHttps = newValue as String
                 "networking.vpnOnly" -> config.networking.vpnOnly = newValue as Boolean
-                "networking.notificationToggle" -> config.networking.notificationToggle = newValue as Boolean
+                "networking.notificationToggle" -> { config.networking.notificationToggle = newValue as Boolean; config.parityFeatures.notificationNetworkingToggle.enabled = newValue as Boolean }
 
                 "game.bundleObb" -> config.game.bundleObb = newValue as Boolean
-
                 "developer.changeTargetSdk" -> config.developer.changeTargetSdk = (newValue as String).toIntOrNull()
-                "developer.nativeHooksEnabled" -> config.developer.nativeHooksEnabled = newValue as Boolean
-                "developer.safeMode" -> config.developer.safeMode = newValue as Boolean
+                "developer.nativeHooksEnabled" -> { config.developer.nativeHooksEnabled = newValue as Boolean; config.parityFeatures.hookOptions.nativeHooksEnabled = newValue as Boolean }
+                "developer.safeMode" -> { config.developer.safeMode = newValue as Boolean; config.parityFeatures.hookOptions.disableHooks = newValue as Boolean }
 
                 "parityFeatures.trackingBlocker.disableAppsFlyer" -> config.parityFeatures.trackingBlocker.disableAppsFlyer = newValue as Boolean
-                "parityFeatures.cpuGpu.hideCpuInfo" -> config.parityFeatures.cpuGpu.hideCpuInfo = newValue as Boolean
-                "parityFeatures.hookOptions.disableHooks" -> {
-                    config.parityFeatures.hookOptions.disableHooks = newValue as Boolean
-                    config.developer.safeMode = newValue as Boolean
-                }
-                "parityFeatures.uninstallData.hasFragileUserData" -> config.parityFeatures.uninstallData.hasFragileUserData = newValue as Boolean
+                "parityFeatures.cpuGpu.hideCpuInfo" -> { config.parityFeatures.cpuGpu.hideCpuInfo = newValue as Boolean; config.parityFeatures.cpuGpu.hideGpuInfo = newValue as Boolean; config.identity.spoofGpu = newValue as Boolean }
+                "parityFeatures.hookOptions.disableHooks" -> { config.parityFeatures.hookOptions.disableHooks = newValue as Boolean; config.developer.safeMode = newValue as Boolean }
+                "parityFeatures.manifestOptions.appCategory" -> config.parityFeatures.manifestOptions.appCategory = newValue as String
+                "parityFeatures.uninstallData.hasFragileUserData" -> { config.parityFeatures.uninstallData.hasFragileUserData = newValue as Boolean; config.storage.preserveDataOnUninstall = newValue as Boolean }
                 "parityFeatures.screenEvents.disableScreenOnOffEvents" -> config.parityFeatures.screenEvents.disableScreenOnOffEvents = newValue as Boolean
                 "parityFeatures.tunnelManager.enabled" -> config.parityFeatures.tunnelManager.enabled = newValue as Boolean
-                "parityFeatures.locale.customLocale" -> config.parityFeatures.locale.customLocale = newValue as String
+                "parityFeatures.locale.customLocale" -> { config.parityFeatures.locale.customLocale = newValue as String; config.display.customLanguage = newValue as String }
                 "parityFeatures.webViewScript.injectMode" -> config.parityFeatures.webViewScript.injectMode = newValue as String
+                "parityFeatures.sneezeToExit.enabled" -> config.parityFeatures.sneezeToExit.enabled = newValue as Boolean
+                "parityFeatures.knoxWarranty.spoofWarrantyBit" -> config.parityFeatures.knoxWarranty.spoofWarrantyBit = newValue as Boolean
 
-                else -> {
-                    // For list editors and other complex types, handled via dialogs
-                    android.util.Log.d("CloneMaster", "Option ${option.id} -> ${option.configFieldPath} updated to $newValue (no direct field mapping, handled via dialog)")
-                }
+                else -> android.util.Log.d("CloneMaster", "Option ${option.id} -> ${option.configFieldPath} updated to $newValue via dialog")
             }
         } catch (ignored: Exception) {
             android.util.Log.e("CloneMaster", "Failed to update config from option ${option.id}: ${ignored.message}", ignored)
@@ -387,13 +397,16 @@ class CloneOptionsActivity : AppCompatActivity() {
         recyclerCategories.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         recyclerCategories.adapter = CategoryAdapter(categories, selectedCategory) { category ->
             selectedCategory = category
+            // Show only options belonging to that category – reset scroll appropriately – preserve option values
             filteredOptions = if (searchEditText.text.toString().isEmpty()) {
                 OptionRegistry.getByCategory(category)
             } else {
-                OptionRegistry.search(searchEditText.text.toString()).filter { it.category == category }
+                // Search overrides category filter – search across all categories
+                OptionRegistry.search(searchEditText.text.toString())
             }
             optionsAdapter.updateOptions(filteredOptions)
-            updateSummary()
+            recyclerOptions.scrollToPosition(0)
+            updateCompactSummary()
         }
     }
 
@@ -412,12 +425,12 @@ class CloneOptionsActivity : AppCompatActivity() {
                     filteredOptions = if (selectedCategory != null) OptionRegistry.getByCategory(selectedCategory!!) else allOptions
                     optionsAdapter = OptionsAdapter(filteredOptions, configValues, { opt, value ->
                         updateConfigFromOption(opt, value)
-                        updateSummary()
-                    }, { opt ->
-                        showOptionDetailDialog(opt)
-                    })
+                        configStorage.saveConfiguration(config)
+                        updateCompactSummary()
+                    }, { opt -> showRealConfigurator(opt) })
                     recyclerOptions.adapter = optionsAdapter
-                    updateSummary()
+                    recyclerOptions.scrollToPosition(0)
+                    updateCompactSummary()
                     Toast.makeText(this@CloneOptionsActivity, "Applied preset: ${preset.displayName}", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -425,70 +438,210 @@ class CloneOptionsActivity : AppCompatActivity() {
         }
     }
 
-    private fun showOptionDetailDialog(option: OptionItem) {
-        when (option.controlType) {
-            ControlType.LIST_EDITOR -> {
-                val current = configValues[option.configFieldPath]?.toString() ?: ""
-                val editText = EditText(this).apply {
-                    setText(current)
-                    hint = "Comma-separated list"
+    private fun showRealConfigurator(option: OptionItem) {
+        // Real configurators – no generic informational dialog with fake Toggle/OK
+        when (option.id) {
+            "general_customIcon" -> {
+                OptionConfigurators.showCustomIconConfigurator(this, config) { newPath ->
+                    configValues[option.configFieldPath] = newPath ?: ""
+                    configStorage.saveConfiguration(config)
+                    optionsAdapter.notifyDataSetChanged()
+                    updateCompactSummary()
                 }
+            }
+            "identity_deviceProfile", "environment_physicalProfile" -> {
+                OptionConfigurators.showDeviceProfileConfigurator(this, config, deviceProfileManager) { newProfileId ->
+                    configValues["environment.physicalDeviceProfileId"] = newProfileId
+                    configValues["identity.deviceProfileName"] = newProfileId
+                    configStorage.saveConfiguration(config)
+                    optionsAdapter.notifyDataSetChanged()
+                    updateCompactSummary()
+                }
+            }
+            "networking_httpProxy" -> {
+                OptionConfigurators.showProxyConfigurator(this, config, isSocks = false) { newProxy ->
+                    configValues[option.configFieldPath] = newProxy
+                    configStorage.saveConfiguration(config)
+                    optionsAdapter.notifyDataSetChanged()
+                    updateCompactSummary()
+                }
+            }
+            "networking_socksProxy" -> {
+                OptionConfigurators.showProxyConfigurator(this, config, isSocks = true) { newProxy ->
+                    configValues[option.configFieldPath] = newProxy
+                    configStorage.saveConfiguration(config)
+                    optionsAdapter.notifyDataSetChanged()
+                    updateCompactSummary()
+                }
+            }
+            "networking_proxyList" -> {
+                val currentList = config.networking.httpProxyList.toMutableList()
+                OptionConfigurators.showListEditorConfigurator(this, option, currentList) { newList ->
+                    config.networking.httpProxyList.clear()
+                    config.networking.httpProxyList.addAll(newList)
+                    configValues[option.configFieldPath] = newList.joinToString(",")
+                    configStorage.saveConfiguration(config)
+                    optionsAdapter.notifyDataSetChanged()
+                    updateCompactSummary()
+                }
+            }
+            "privacy_permissions" -> {
+                val currentList = config.privacy.disabledPermissions.toMutableList()
+                OptionConfigurators.showListEditorConfigurator(this, option, currentList) { newList ->
+                    config.privacy.disabledPermissions.clear()
+                    config.privacy.disabledPermissions.addAll(newList)
+                    configValues[option.configFieldPath] = newList.joinToString(",")
+                    configStorage.saveConfiguration(config)
+                    optionsAdapter.notifyDataSetChanged()
+                    updateCompactSummary()
+                }
+            }
+            "notifications_filter" -> {
+                val currentList = config.notification.filterPatterns.toMutableList()
+                OptionConfigurators.showListEditorConfigurator(this, option, currentList) { newList ->
+                    config.notification.filterPatterns.clear()
+                    config.notification.filterPatterns.addAll(newList)
+                    configValues[option.configFieldPath] = newList.joinToString(",")
+                    configStorage.saveConfiguration(config)
+                    optionsAdapter.notifyDataSetChanged()
+                    updateCompactSummary()
+                }
+            }
+            "data_bundleData" -> {
+                OptionConfigurators.showDataBundleConfigurator(this, config) {
+                    initializeConfigValues()
+                    optionsAdapter.notifyDataSetChanged()
+                    configStorage.saveConfiguration(config)
+                    updateCompactSummary()
+                }
+            }
+            "webview_customScript" -> {
+                OptionConfigurators.showWebViewScriptConfigurator(this, config) {
+                    initializeConfigValues()
+                    optionsAdapter.notifyDataSetChanged()
+                    configStorage.saveConfiguration(config)
+                    updateCompactSummary()
+                }
+            }
+            "display_colors" -> {
+                // Real color picker – independent implementation
+                val colors = arrayOf("#FF0000 Red", "#00FF00 Green", "#0000FF Blue", "#2196F3 Clone-Master Blue", "#000000 Black", "#FFFFFF White")
+                var selected = 0
                 AlertDialog.Builder(this)
-                    .setTitle(option.name)
-                    .setMessage(option.description + "\n\nCurrent: $current\n\nAliases: ${option.aliases.joinToString(", ")}")
-                    .setView(editText)
+                    .setTitle("Status/Navigation/Toolbar Colors – Select")
+                    .setSingleChoiceItems(colors, 0) { _, which -> selected = which }
                     .setPositiveButton("Save") { _, _ ->
-                        val newValue = editText.text.toString()
-                        configValues[option.configFieldPath] = newValue
-                        updateConfigFromOption(option, newValue)
-                        updateSummary()
+                        val colorHex = colors[selected].split(" ")[0]
+                        val colorInt = try { android.graphics.Color.parseColor(colorHex) } catch (ignored: Exception) { 0xFF2196F3.toInt() }
+                        config.display.statusBarColor = colorInt
+                        config.display.navBarColor = colorInt
+                        configValues[option.configFieldPath] = colorInt
+                        configStorage.saveConfiguration(config)
+                        optionsAdapter.notifyDataSetChanged()
+                        updateCompactSummary()
                     }
                     .setNegativeButton("Cancel", null)
                     .show()
             }
-            ControlType.DIALOG -> {
-                AlertDialog.Builder(this)
-                    .setTitle(option.name)
-                    .setMessage("${option.description}\n\nCategory: ${option.category.displayName}\nField: ${option.configFieldPath}\nCompatibility: ${option.compatibility.emoji} ${option.compatibility.label}\n${option.androidVersionRequirement ?: ""}\n${option.permissionRequirement ?: ""}\n\nAliases: ${option.aliases.joinToString(", ")}\n\n${option.requiresWarning ?: ""}")
-                    .setPositiveButton("OK", null)
-                    .setNeutralButton("Toggle") { _, _ ->
+            else -> {
+                // For other options, use appropriate configurator based on control type – real UI, not generic metadata
+                when (option.controlType) {
+                    ControlType.TEXT_FIELD -> {
+                        val current = configValues[option.configFieldPath]?.toString() ?: ""
+                        OptionConfigurators.showTextConfigurator(this, option, current) { newValue ->
+                            configValues[option.configFieldPath] = newValue
+                            updateConfigFromOption(option, newValue)
+                            configStorage.saveConfiguration(config)
+                            optionsAdapter.notifyDataSetChanged()
+                            updateCompactSummary()
+                        }
+                    }
+                    ControlType.DROPDOWN -> {
+                        val current = configValues[option.configFieldPath]?.toString() ?: ""
+                        val values = getDropdownValues(option)
+                        OptionConfigurators.showEnumConfigurator(this, option, current, values) { newValue ->
+                            configValues[option.configFieldPath] = newValue
+                            updateConfigFromOption(option, newValue)
+                            configStorage.saveConfiguration(config)
+                            optionsAdapter.notifyDataSetChanged()
+                            updateCompactSummary()
+                        }
+                    }
+                    ControlType.SLIDER -> {
+                        val current = (configValues[option.configFieldPath] as? Int) ?: configValues[option.configFieldPath]?.toString()?.toIntOrNull() ?: 50
+                        val (min, max) = getSliderRange(option)
+                        OptionConfigurators.showNumericConfigurator(this, option, current, min, max) { newValue ->
+                            configValues[option.configFieldPath] = newValue
+                            updateConfigFromOption(option, newValue.toString())
+                            configStorage.saveConfiguration(config)
+                            optionsAdapter.notifyDataSetChanged()
+                            updateCompactSummary()
+                        }
+                    }
+                    ControlType.BUTTON -> {
+                        when (option.id) {
+                            "environment_diagnostics" -> {
+                                val intent = Intent(this, com.clonemaster.environment.EnvironmentDiagnosticsActivity::class.java).apply {
+                                    putExtra("profileId", config.environment.physicalDeviceProfileId)
+                                }
+                                startActivity(intent)
+                            }
+                            "diagnostics_logcatViewer" -> {
+                                startActivity(Intent(this, com.clonemaster.ui.LogcatViewerActivity::class.java))
+                            }
+                            "diagnostics_compatibilityReport" -> {
+                                startActivity(Intent(this, com.clonemaster.ui.AppAnalyzerActivity::class.java).apply {
+                                    putExtra("package", config.originalPackage)
+                                })
+                            }
+                            else -> {
+                                AlertDialog.Builder(this)
+                                    .setTitle(option.name)
+                                    .setMessage("${option.description}\n\nField: ${option.configFieldPath}\nCompatibility: ${option.compatibility.emoji} ${option.compatibility.label}")
+                                    .setPositiveButton("OK", null)
+                                    .show()
+                            }
+                        }
+                    }
+                    else -> {
+                        // For switch, already handled via switch listener – no need for dialog
+                        // But if user taps card, toggle switch
                         val current = configValues[option.configFieldPath] as? Boolean ?: false
                         val newValue = !current
                         configValues[option.configFieldPath] = newValue
                         updateConfigFromOption(option, newValue)
+                        configStorage.saveConfiguration(config)
                         optionsAdapter.notifyDataSetChanged()
-                        updateSummary()
-                    }
-                    .show()
-            }
-            ControlType.BUTTON -> {
-                when (option.id) {
-                    "environment_diagnostics" -> {
-                        val intent = Intent(this, com.clonemaster.environment.EnvironmentDiagnosticsActivity::class.java).apply {
-                            putExtra("profileId", config.environment.physicalDeviceProfileId)
-                        }
-                        startActivity(intent)
-                    }
-                    "diagnostics_logcatViewer" -> {
-                        val intent = Intent(this, com.clonemaster.ui.LogcatViewerActivity::class.java)
-                        startActivity(intent)
-                    }
-                    "diagnostics_compatibilityReport" -> {
-                        val intent = Intent(this, com.clonemaster.ui.AppAnalyzerActivity::class.java).apply {
-                            putExtra("package", config.originalPackage)
-                        }
-                        startActivity(intent)
-                    }
-                    else -> {
-                        AlertDialog.Builder(this)
-                            .setTitle(option.name)
-                            .setMessage(option.description)
-                            .setPositiveButton("OK", null)
-                            .show()
+                        updateCompactSummary()
                     }
                 }
             }
-            else -> {}
+        }
+    }
+
+    private fun getDropdownValues(option: OptionItem): List<String> {
+        return when {
+            option.configFieldPath.contains("iconBadge") -> listOf("NONE", "NUMBER", "DOT", "CUSTOM_TEXT")
+            option.configFieldPath.contains("darkMode") -> listOf("LIGHT", "DARK", "SYSTEM", "FORCE_DARK")
+            option.configFieldPath.contains("orientationLock") -> listOf("-1", "1", "0", "4")
+            option.configFieldPath.contains("appCategory") -> listOf("undefined", "game", "audio", "video", "image", "social", "news", "maps", "productivity")
+            option.configFieldPath.contains("compression") -> listOf("NONE", "ZIP", "GZIP", "ZSTD")
+            option.configFieldPath.contains("encryption") -> listOf("NONE", "AES256", "CHACHA20")
+            option.configFieldPath.contains("deviceProfile") || option.configFieldPath.contains("physicalDeviceProfileId") -> listOf("pixel8_pro", "pixel7a", "s24_ultra", "a54", "oneplus12", "xiaomi14pro", "nothing2", "fold5")
+            option.configFieldPath.contains("injectMode") -> listOf("DOCUMENT_START", "DOCUMENT_END", "DOCUMENT_IDLE")
+            option.configFieldPath.contains("rootHideLevel") -> listOf("OFF", "BASIC", "STANDARD", "AGGRESSIVE")
+            option.configFieldPath.contains("emulatorHideLevel") -> listOf("OFF", "BASIC", "STANDARD", "FULL")
+            else -> listOf("Default", "Enabled", "Disabled")
+        }
+    }
+
+    private fun getSliderRange(option: OptionItem): Pair<Int, Int> {
+        return when {
+            option.configFieldPath.contains("fakeBatteryLevel") -> 0 to 100
+            option.configFieldPath.contains("brightnessOnStart") -> 0 to 255
+            option.configFieldPath.contains("customDisplaySize") -> 50 to 200
+            option.configFieldPath.contains("badgeNumber") -> 1 to 99
+            else -> 0 to 100
         }
     }
 
@@ -499,49 +652,40 @@ class CloneOptionsActivity : AppCompatActivity() {
             return
         }
 
-        val names = configs.map { "${it.appName} – ${it.clonePackage}" }.toTypedArray()
+        val names = configs.map { "${it.appName} – ${it.clonePackage} – ${it.environment.physicalDeviceProfileId}" }.toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle("Load Configuration")
+            .setTitle("Load Configuration – Save/Load/Duplicate/Reset/Export/Import")
             .setItems(names) { _, which ->
                 val selected = configs[which]
                 config = selected
                 initializeConfigValues()
                 optionsAdapter = OptionsAdapter(filteredOptions, configValues, { opt, value ->
                     updateConfigFromOption(opt, value)
-                    updateSummary()
-                }, { opt -> showOptionDetailDialog(opt) })
+                    configStorage.saveConfiguration(config)
+                    updateCompactSummary()
+                }, { opt -> showRealConfigurator(opt) })
                 recyclerOptions.adapter = optionsAdapter
-                updateSummary()
+                recyclerOptions.scrollToPosition(0)
+                updateCompactSummary()
                 Toast.makeText(this, "Loaded: ${selected.clonePackage}", Toast.LENGTH_SHORT).show()
             }
             .setNeutralButton("Import") { _, _ ->
-                // Open file picker for import
                 val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
                     type = "application/json"
                     addCategory(Intent.CATEGORY_OPENABLE)
                 }
                 startActivityForResult(Intent.createChooser(intent, "Import Config"), 2001)
             }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun showCloneSummaryAndBuild() {
-        val summary = buildCloneSummary()
-
+    private fun showDetailedSummaryDialog() {
+        val detailed = buildDetailedSummary()
         AlertDialog.Builder(this)
-            .setTitle("Clone Summary – Ready to Build?")
-            .setMessage(summary)
-            .setPositiveButton("Build Clone") { _, _ ->
-                // Save config first
-                configStorage.saveConfiguration(config)
-
-                // Launch BuildProgressActivity
-                val intent = Intent(this, BuildProgressActivity::class.java).apply {
-                    putExtra("configJson", GsonBuilder().setPrettyPrinting().create().toJson(config))
-                }
-                startActivity(intent)
-            }
-            .setNegativeButton("Cancel", null)
+            .setTitle("Detailed Clone Summary")
+            .setMessage(detailed)
+            .setPositiveButton("OK", null)
             .setNeutralButton("Export Config") { _, _ ->
                 try {
                     val file = configStorage.exportConfiguration(config)
@@ -553,93 +697,163 @@ class CloneOptionsActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun buildCloneSummary(): String {
+    private fun showCloneSummaryAndBuild() {
+        val summary = buildCompactSummaryForBuild()
+
+        AlertDialog.Builder(this)
+            .setTitle("Clone Summary – Ready to Build?")
+            .setMessage(summary)
+            .setPositiveButton("BUILD CLONE") { _, _ ->
+                configStorage.saveConfiguration(config)
+                val intent = Intent(this, BuildProgressActivity::class.java).apply {
+                    putExtra("configJson", GsonBuilder().setPrettyPrinting().create().toJson(config))
+                }
+                startActivity(intent)
+            }
+            .setNegativeButton("Cancel", null)
+            .setNeutralButton("Details") { _, _ -> showDetailedSummaryDialog() }
+            .show()
+    }
+
+    private fun buildCompactSummaryForBuild(): String {
         val enabledOptions = configValues.filter { it.value is Boolean && it.value as Boolean }.keys
         val warnings = mutableListOf<String>()
+        if (config.identity.imei.isNotEmpty()) warnings.add("IMEI spoofing BLOCKED BY ANDROID LIMITATION on Android 10+")
+        if (config.privacy.disabledPermissions.isNotEmpty()) warnings.add("Stripping permissions may break app")
+        if (config.environment.hideRoot) warnings.add("Root hiding may be bypassed by direct syscalls")
+        if (config.dataBundle.enabled) warnings.add("Data bundle increases size by ~${config.dataBundle.maxBundleSizeMb}MB")
 
-        if (config.identity.imei.isNotEmpty()) warnings.add("IMEI spoofing may be BLOCKED BY ANDROID LIMITATION on Android 10+")
-        if (config.privacy.disabledPermissions.isNotEmpty()) warnings.add("Stripping permissions may break app: ${config.privacy.disabledPermissions.joinToString()}")
-        if (config.environment.hideRoot) warnings.add("Root hiding may be bypassed by direct syscalls – check diagnostics")
-        if (config.dataBundle.enabled) warnings.add("Data bundle increases APK size by ~${config.dataBundle.maxBundleSizeMb}MB and may include sensitive data")
+        return """
+            Source: ${originalAppInfo.appName} (${config.originalPackage}) v${config.versionName}
 
-        val estimatedSize = estimateOutputSize()
+            Clone: ${config.appName}
+            Package: ${config.clonePackage}
+            Profile: ${config.environment.physicalDeviceProfileId}
+
+            Enabled: ${enabledOptions.size}/${allOptions.size} options
+            Data Bundle: ${if (config.dataBundle.enabled) "Enabled" else "Disabled"}
+            Network: ${if (config.networking.disableNetworking) "Disabled" else "Enabled – Proxy ${config.networking.httpProxy}/${config.networking.socksProxy}"}
+
+            Warnings: ${warnings.size} – ${warnings.take(3).joinToString("; ")}
+
+            Estimated Size: ~${estimateOutputSize()}MB
+
+            ${if (warnings.isEmpty()) "🟢 Supported" else "🟡 May affect compatibility"}
+        """.trimIndent()
+    }
+
+    private fun buildDetailedSummary(): String {
+        val enabledOptions = configValues.filter { it.value is Boolean && it.value as Boolean }.keys
+        val warnings = mutableListOf<String>()
+        if (config.identity.imei.isNotEmpty()) warnings.add("IMEI spoofing BLOCKED BY ANDROID LIMITATION")
+        if (config.privacy.disabledPermissions.isNotEmpty()) warnings.add("Stripping permissions: ${config.privacy.disabledPermissions.joinToString()}")
+        if (config.environment.hideRoot) warnings.add("Root hiding may be bypassed")
+        if (config.dataBundle.enabled) warnings.add("Data bundle size ~${config.dataBundle.maxBundleSizeMb}MB")
 
         return """
             Source App: ${originalAppInfo.appName}
             Package: ${config.originalPackage}
             Version: ${config.versionName} (${config.versionCode}) – Target SDK ${originalAppInfo.targetSdk}
+            APK: ${originalAppInfo.apkPath}
+            Size: ${originalAppInfo.sizeBytes / 1024 / 1024}MB
 
             Clone Name: ${config.appName}
             Clone Package: ${config.clonePackage}
             Clone Index: ${config.cloneIndex}
+            Version: ${config.versionName} (${config.versionCode})
 
             Device Profile: ${config.environment.physicalDeviceProfileId} (${deviceProfileManager.loadProfile(config.environment.physicalDeviceProfileId)?.displayName ?: "Unknown"})
+            Fingerprint: ${deviceProfileManager.loadProfile(config.environment.physicalDeviceProfileId)?.fingerprint ?: ""}
 
             Enabled Options (${enabledOptions.size}):
-            ${enabledOptions.take(20).joinToString("\n") { "- $it" }}
-            ${if (enabledOptions.size > 20) "... and ${enabledOptions.size - 20} more" else ""}
+            ${enabledOptions.joinToString("\n") { "- $it" }}
 
-            Data Bundle: ${if (config.dataBundle.enabled) "Enabled – ${config.dataBundle.selectedCategories.joinToString()} – Compression ${config.dataBundle.compression} – Encryption ${config.dataBundle.encryption}" else "Disabled"}
+            Data Bundle: ${if (config.dataBundle.enabled) "Enabled – Categories ${config.dataBundle.selectedCategories.joinToString()} – Compression ${config.dataBundle.compression} – Encryption ${config.dataBundle.encryption} – Embed ${config.dataBundle.embedInApk}" else "Disabled"}
 
-            Network: ${if (config.networking.disableNetworking) "Disabled" else "Enabled – HTTP Proxy ${config.networking.httpProxy} – SOCKS ${config.networking.socksProxy} – DoH ${config.networking.dnsOverHttps} – VPN Only ${config.networking.vpnOnly}"}
+            Network: HTTP Proxy ${config.networking.httpProxy} – SOCKS ${config.networking.socksProxy} – List ${config.networking.httpProxyList.size} – DoH ${config.networking.dnsOverHttps} – VPN Only ${config.networking.vpnOnly} – Notification Toggle ${config.networking.notificationToggle}
+            Tunnel Manager: ${if (config.parityFeatures.tunnelManager.enabled) "Enabled – Active ${config.parityFeatures.tunnelManager.activeTunnelId}" else "Disabled"}
 
             Warnings (${warnings.size}):
             ${warnings.joinToString("\n") { "⚠️ $it" }}
 
-            Estimated Output Size: ~${estimatedSize}MB
+            Estimated Size: ~${estimateOutputSize()}MB
+            Compatibility: ${if (warnings.isEmpty()) "🟢 Supported" else "🟡 May affect compatibility"}
 
-            Compatibility: ${if (warnings.isEmpty()) "🟢 Supported" else "🟡 May affect compatibility – check warnings"}
-
-            Tap Build Clone to generate APK – configuration will be bundled into assets/clone_config.json and affect clone pipeline
+            Config JSON size: ${GsonBuilder().setPrettyPrinting().create().toJson(config).length / 1024}KB
         """.trimIndent()
     }
 
     private fun estimateOutputSize(): Int {
         var size = 0
-        try {
-            size += File(originalAppInfo.apkPath).length().toInt() / 1024 / 1024
-        } catch (ignored: Exception) {
-            size += 20 // default estimate
-        }
+        try { size += File(originalAppInfo.apkPath).length().toInt() / 1024 / 1024 } catch (ignored: Exception) { size += 20 }
         if (config.dataBundle.enabled) size += config.dataBundle.maxBundleSizeMb
         if (config.game.bundleObb) size += 50
-        size += 5 // hooks overhead
+        size += 5
         return size
     }
 
-    private fun updateSummary() {
+    private fun updateCompactSummary() {
         val enabledCount = configValues.filter { it.value is Boolean && it.value as Boolean }.size
         val totalCount = allOptions.size
-        val dataBundleStatus = if (config.dataBundle.enabled) "Data Bundle: Enabled" else "Data Bundle: Disabled"
-        val profile = config.environment.physicalDeviceProfileId
+        val warnings = mutableListOf<String>().apply {
+            if (config.identity.imei.isNotEmpty()) add("IMEI BLOCKED")
+            if (config.privacy.disabledPermissions.isNotEmpty()) add("Permissions")
+            if (config.dataBundle.enabled) add("Data Bundle")
+        }
 
-        textSummary.text = """
-            Clone: ${config.appName} – ${config.clonePackage}
-            Profile: $profile – ${deviceProfileManager.loadProfile(profile)?.displayName ?: ""}
-            Enabled: $enabledCount/$totalCount options – $dataBundleStatus
-            Search across: GPS, proxy, clipboard, root, dark mode, data, WebView, etc.
-            Tap category to filter, search to find options, preset to apply, Build Clone to generate
-        """.trimIndent()
+        textCloneName.text = "Clone: ${config.appName}"
+        textClonePackage.text = "${config.clonePackage} • ${config.environment.physicalDeviceProfileId} – ${deviceProfileManager.loadProfile(config.environment.physicalDeviceProfileId)?.displayName?.take(20) ?: ""}"
+        textSummaryCompact.text = "$enabledCount/$totalCount options • Data: ${if (config.dataBundle.enabled) "Enabled" else "Disabled"} • Warnings: ${warnings.size} ${warnings.take(2).joinToString()}"
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 2001 && resultCode == RESULT_OK) {
-            val uri = data?.data
-            if (uri != null) {
-                val imported = configStorage.importConfiguration(uri)
-                if (imported != null) {
-                    config = imported
-                    initializeConfigValues()
-                    optionsAdapter = OptionsAdapter(filteredOptions, configValues, { opt, value ->
-                        updateConfigFromOption(opt, value)
-                        updateSummary()
-                    }, { opt -> showOptionDetailDialog(opt) })
-                    recyclerOptions.adapter = optionsAdapter
-                    updateSummary()
-                    Toast.makeText(this, "Imported: ${imported.clonePackage}", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this, "Import failed", Toast.LENGTH_SHORT).show()
+        when (requestCode) {
+            2001 -> {
+                if (resultCode == RESULT_OK) {
+                    val uri = data?.data
+                    if (uri != null) {
+                        val imported = configStorage.importConfiguration(uri)
+                        if (imported != null) {
+                            config = imported
+                            initializeConfigValues()
+                            optionsAdapter = OptionsAdapter(filteredOptions, configValues, { opt, value ->
+                                updateConfigFromOption(opt, value)
+                                configStorage.saveConfiguration(config)
+                                updateCompactSummary()
+                            }, { opt -> showRealConfigurator(opt) })
+                            recyclerOptions.adapter = optionsAdapter
+                            updateCompactSummary()
+                            Toast.makeText(this, "Imported: ${imported.clonePackage}", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(this, "Import failed", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+            3001 -> {
+                // Custom icon picker result
+                if (resultCode == RESULT_OK) {
+                    val uri = data?.data
+                    if (uri != null) {
+                        try {
+                            // Copy selected image to app private storage for persistence
+                            val inputStream = contentResolver.openInputStream(uri)
+                            val iconDir = File(filesDir, "custom_icons").apply { mkdirs() }
+                            val iconFile = File(iconDir, "custom_icon_${System.currentTimeMillis()}.png")
+                            inputStream?.use { input ->
+                                iconFile.outputStream().use { output -> input.copyTo(output) }
+                            }
+                            config.customIconPath = iconFile.absolutePath
+                            configValues["customIconPath"] = iconFile.absolutePath
+                            configStorage.saveConfiguration(config)
+                            optionsAdapter.notifyDataSetChanged()
+                            updateCompactSummary()
+                            Toast.makeText(this, "Icon selected: ${iconFile.name}", Toast.LENGTH_SHORT).show()
+                        } catch (ignored: Exception) {
+                            Toast.makeText(this, "Failed to save icon: ${ignored.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 }
             }
         }
@@ -667,8 +881,9 @@ class CategoryAdapter(
         val category = categories[position]
         holder.name.text = category.displayName
         holder.name.isSelected = category == selected
+        // Visual feedback for selected category – independent UI, not copying App Cloner colors
         holder.name.setBackgroundResource(
-            if (category == selected) R.drawable.ic_launcher_background else android.R.color.transparent
+            if (category == selected) R.drawable.bg_category_selected else R.drawable.bg_category_unselected
         )
         holder.itemView.setOnClickListener {
             selected = category

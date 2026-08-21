@@ -6,65 +6,221 @@
     android:layout_height="match_parent"
     android:background="#F8F9FA">
 
-    <!-- Toolbar with Clone-Master identity (own visual identity, not copying App Cloner) -->
-    <com.google.android.material.appbar.AppBarLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+    <!-- Top: App bar – compact -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#1565C0">
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
+            android:layout_height="56dp"
             app:title="Clone Configuration"
             app:titleTextColor="#FFFFFF"
             android:background="#1565C0"/>
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- Search field – prominent -->
-    <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="12dp" app:cardCornerRadius="12dp" app:cardElevation="2dp">
-        <LinearLayout android:orientation="horizontal" android:padding="12dp" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
-            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@android:drawable/ic_search_category_default" android:contentDescription="Search"/>
+    <!-- Search – prominent, small height -->
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="4dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="2dp"
+        app:strokeWidth="0dp">
+        <LinearLayout
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:gravity="center_vertical"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_search_category_default"
+                android:contentDescription="Search"/>
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/searchOptions"
                 android:layout_width="0dp"
                 android:layout_weight="1"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
+                android:layout_marginStart="10dp"
                 android:hint="Search clone options... (GPS, proxy, clipboard, root, dark mode, data, WebView...)"
                 android:background="@null"
-                android:textSize="14sp"/>
-            <ImageView android:id="@+id/clearSearch" android:layout_width="24dp" android:layout_height="24dp" android:src="@android:drawable/ic_menu_close_clear_cancel" android:contentDescription="Clear"/>
+                android:textSize="14sp"
+                android:singleLine="true"
+                android:imeOptions="actionSearch"/>
+            <ImageView
+                android:id="@+id/clearSearch"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:contentDescription="Clear"
+                android:padding="2dp"/>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- Presets -->
-    <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="12dp" android:layout_marginBottom="8dp" app:cardCornerRadius="12dp">
-        <LinearLayout android:orientation="horizontal" android:padding="12dp" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
-            <TextView android:text="Preset:" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-            <Spinner android:id="@+id/presetSpinner" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="12dp"/>
-            <Button android:id="@+id/buttonSaveConfig" android:text="Save" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp"/>
-            <Button android:id="@+id/buttonLoadConfig" android:text="Load" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+    <!-- Preset / save / load controls – compact -->
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="4dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="1dp">
+        <LinearLayout
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="6dp"
+            android:gravity="center_vertical"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <TextView
+                android:text="Preset:"
+                android:textStyle="bold"
+                android:textSize="12sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"/>
+            <Spinner
+                android:id="@+id/presetSpinner"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"/>
+            <Button
+                android:id="@+id/buttonSaveConfig"
+                android:text="Save"
+                android:textSize="11sp"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="6dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="12dp"
+                style="@style/Widget.Material3.Button.TonalButton"/>
+            <Button
+                android:id="@+id/buttonLoadConfig"
+                android:text="Load"
+                android:textSize="11sp"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="4dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="12dp"
+                style="@style/Widget.Material3.Button.TonalButton"/>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- Categories horizontal -->
+    <!-- Horizontally scrollable category selector – compact height 48dp -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerCategories"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="48dp"
         android:orientation="horizontal"
-        android:layout_marginHorizontal="12dp"/>
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginBottom="2dp"
+        android:clipToPadding="false"
+        android:paddingHorizontal="4dp"/>
 
-    <!-- Options list -->
+    <!-- Main: ONE primary vertically scrollable options area – gets majority of height via weight 1 -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerOptions"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_margin="12dp"/>
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="4dp"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp"/>
 
-    <!-- Summary and Build -->
-    <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="12dp" app:cardCornerRadius="12dp" app:cardElevation="4dp">
-        <LinearLayout android:orientation="vertical" android:padding="16dp" android:layout_width="match_parent" android:layout_height="wrap_content">
-            <TextView android:id="@+id/textSummary" android:text="Clone Summary – Source app, Package, Version, Clone name, Clone package, Device profile, Enabled options, Data bundle, Network, Warnings, Estimated size" android:textSize="12sp" android:fontFamily="monospace" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-            <Button android:id="@+id/buttonBuildClone" android:text="Build Clone" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:backgroundTint="#1565C0"/>
+    <!-- Bottom: Compact sticky clone summary/build area – small, does NOT cover option list -->
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="12dp"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="6dp"
+        android:backgroundTint="#FFFFFF">
+
+        <LinearLayout
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <!-- Compact summary – single line or two lines max -->
+            <LinearLayout
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:orientation="vertical"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content">
+
+                    <TextView
+                        android:id="@+id/textCloneName"
+                        android:text="Clone: MyApp Clone"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"/>
+
+                    <TextView
+                        android:id="@+id/textClonePackage"
+                        android:text="com.example.clone1 • pixel8_pro"
+                        android:textSize="11sp"
+                        android:textColor="#616161"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"/>
+
+                    <TextView
+                        android:id="@+id/textSummaryCompact"
+                        android:text="11/83 options • Data: Disabled • Warnings: 1"
+                        android:textSize="11sp"
+                        android:textColor="#757575"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"/>
+
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/buttonSummaryDetails"
+                    android:text="Details"
+                    android:textSize="10sp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="12dp"
+                    style="@style/Widget.Material3.Button.OutlinedButton"/>
+
+            </LinearLayout>
+
+            <!-- Prominent BUILD CLONE button -->
+            <Button
+                android:id="@+id/buttonBuildClone"
+                android:text="BUILD CLONE"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="#1565C0"
+                app:cornerRadius="12dp"/>
+
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <ImageView android:id="@+id/imagePreview" android:layout_width="192dp" android:layout_height="192dp" android:layout_gravity="center" android:src="@mipmap/ic_launcher" android:contentDescription="Icon Preview" android:background="#E0E0E0"/>
+
+    <TextView android:id="@+id/textCurrentPath" android:text="No custom icon – using original" android:textSize="11sp" android:fontFamily="monospace" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp"/>
+
+    <Button android:id="@+id/buttonSelectImage" android:text="Select image from device" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp"/>
+
+    <Button android:id="@+id/buttonResetIcon" android:text="Reset to original" android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/Widget.Material3.Button.OutlinedButton"/>
+
+    <TextView android:text="Select image, preview, crop/resize to 192x192 automatically, save selection, persists into CloneConfig.customIconPath, CloneEngine uses selected icon via ResourceTransformer" android:textSize="10sp" android:textColor="#757575" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"/>
+
+</LinearLayout>
