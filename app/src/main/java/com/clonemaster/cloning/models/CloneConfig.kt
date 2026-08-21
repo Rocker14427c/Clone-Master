@@ -68,14 +68,161 @@ data class CloneConfig(
     // Environment Spoofing / Detection Mitigation
     var environment: EnvironmentConfig = EnvironmentConfig(),
 
-    // Data Bundling / Migration (NEW)
+    // Data Bundling / Migration
     var dataBundle: DataBundleConfig = DataBundleConfig(),
+
+    // Functional Parity – Independent Implementation for Public Feature Reference (App Cloner)
+    var parityFeatures: ParityFeaturesConfig = ParityFeaturesConfig(),
 
     // Batch
     var isBatch: Boolean = false,
     var batchCount: Int = 1,
     var batchNameTemplate: String = "{appName} {index}"
 
+) : Serializable
+
+// --- Functional Parity Features – Independent Implementation ---
+/**
+ * Independent implementation for public feature reference https://appcloner.app/
+ * Provides equivalent functionality using Clone-Master's own architecture
+ * Terms: functional parity, equivalent functionality, independent implementation, public feature reference, compatibility with Android limitations
+ */
+data class ParityFeaturesConfig(
+    var trackingBlocker: TrackingBlockerConfig = TrackingBlockerConfig(),
+    var cpuGpu: CpuGpuConfig = CpuGpuConfig(),
+    var hookOptions: HookOptionsConfig = HookOptionsConfig(),
+    var manifestOptions: ManifestOptionsConfig = ManifestOptionsConfig(),
+    var sneezeToExit: SneezeConfig = SneezeConfig(),
+    var knoxWarranty: KnoxConfig = KnoxConfig(),
+    var screensaver: ScreensaverConfig = ScreensaverConfig(),
+    var supportChat: SupportChatConfig = SupportChatConfig(),
+    var textMute: TextMuteConfig = TextMuteConfig(),
+    var uninstallData: UninstallDataConfig = UninstallDataConfig(),
+    var screenEvents: ScreenEventConfig = ScreenEventConfig(),
+    var notificationNetworkingToggle: NotificationToggleConfig = NotificationToggleConfig(),
+    var tunnelManager: TunnelManagerConfig = TunnelManagerConfig(),
+    var proxyList: ProxyListConfig = ProxyListConfig(),
+    var notificationDots: DotsConfig = DotsConfig(),
+    var locale: LocaleConfig = LocaleConfig(),
+    var webViewScript: WebViewScriptConfig = WebViewScriptConfig(),
+    var deviceFiltering: DeviceFilteringConfig = DeviceFilteringConfig(),
+    var layoutInspector: LayoutInspectorConfig = LayoutInspectorConfig()
+) : Serializable
+
+data class TrackingBlockerConfig(
+    var disableAppsFlyer: Boolean = true,
+    var disableFirebaseAnalytics: Boolean = false,
+    var disableFacebook: Boolean = false,
+    var disableAllTracking: Boolean = false,
+    var customBlockedPackages: MutableList<String> = mutableListOf()
+) : Serializable
+
+data class CpuGpuConfig(
+    var hideCpuInfo: Boolean = true,
+    var hideGpuInfo: Boolean = true,
+    var spoofCpuModel: String = "Qualcomm Kryo 385",
+    var spoofCpuCores: Int = 8,
+    var spoofCpuFreq: String = "2.84 GHz",
+    var spoofGpuVendor: String = "Qualcomm",
+    var spoofGpuRenderer: String = "Adreno 750"
+) : Serializable
+
+data class HookOptionsConfig(
+    var nativeHooksEnabled: Boolean = true,
+    var disableHooks: Boolean = false,
+    var safeMode: Boolean = false,
+    var hookPine: Boolean = true,
+    var hookByteHook: Boolean = true,
+    var hookAndHook: Boolean = false
+) : Serializable
+
+data class ManifestOptionsConfig(
+    var appCategory: String = "undefined",
+    var largeHeap: Boolean? = null
+) : Serializable
+
+data class SneezeConfig(
+    var enabled: Boolean = false,
+    var sensitivity: Float = 0.8f,
+    var useProximity: Boolean = true,
+    var useSound: Boolean = true,
+    var soundThresholdDb: Int = 70
+) : Serializable
+
+data class KnoxConfig(
+    var spoofWarrantyBit: Boolean = false,
+    var warrantyBitValue: Int = 0
+) : Serializable
+
+data class ScreensaverConfig(
+    var mode: String = "DEFAULT",
+    var customMessage: String = "",
+    var preventDream: Boolean = false
+) : Serializable
+
+data class SupportChatConfig(
+    var enabled: Boolean = false,
+    var supportEmail: String = "support@clonemaster.app",
+    var telegramLink: String = "https://t.me/CloneMasterSupport"
+) : Serializable
+
+data class TextMuteConfig(
+    var enabled: Boolean = false,
+    var muteTriggers: MutableList<String> = mutableListOf("Ad", "Advertisement"),
+    var muteDurationMs: Long = 5000
+) : Serializable
+
+data class UninstallDataConfig(
+    var promptToKeepData: Boolean = false,
+    var hasFragileUserData: Boolean = false
+) : Serializable
+
+data class ScreenEventConfig(
+    var disableScreenOnOffEvents: Boolean = false
+) : Serializable
+
+data class NotificationToggleConfig(
+    var enabled: Boolean = false,
+    var showToggle: Boolean = false
+) : Serializable
+
+data class TunnelManagerConfig(
+    var enabled: Boolean = false,
+    var activeTunnelId: String? = null,
+    var autoSwitchOnFailure: Boolean = true
+) : Serializable
+
+data class ProxyListConfig(
+    var autoRotate: Boolean = false,
+    var rotateIntervalMinutes: Int = 30,
+    var testOnAdd: Boolean = true,
+    var useBestLatency: Boolean = true
+) : Serializable
+
+data class DotsConfig(
+    var showDots: Boolean? = null
+) : Serializable
+
+data class LocaleConfig(
+    var customLocale: String = "",
+    var usePerAppLocale: Boolean = true
+) : Serializable
+
+data class WebViewScriptConfig(
+    var injectMode: String = "DOCUMENT_END",
+    var enabled: Boolean = true
+) : Serializable
+
+data class DeviceFilteringConfig(
+    var filterQuery: String = "",
+    var filterByTag: Boolean = true,
+    var enabled: Boolean = true
+) : Serializable
+
+data class LayoutInspectorConfig(
+    var enabled: Boolean = true,
+    var liveHierarchy: Boolean = true,
+    var showProperties: Boolean = true
 ) : Serializable
 
 // --- Data Bundling / Migration Config ---

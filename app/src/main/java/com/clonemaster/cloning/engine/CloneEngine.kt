@@ -68,12 +68,35 @@ class CloneEngine(private val context: Context) {
                 unzipApk(apkPath, decodedDir)
             }
 
-            // Step 2: Manifest transform
+            // Step 2: Manifest transform – independent implementation, functional parity with public feature reference
             onProgress("Transforming manifest...")
             val manifestFile = File(decodedDir, "AndroidManifest.xml")
             if (!manifestFile.exists()) throw IllegalStateException("AndroidManifest.xml not found after decode")
             val manifestResult = manifestTransformer.transform(manifestFile, config)
             diagnostics.log("New package: ${manifestResult.newPackage}, authorities: ${manifestResult.authorityMap}")
+
+            // Manifest options – public reference: App category and Large heap moved to Manifest & resource options
+            // Independent implementation for functional parity
+            try {
+                val manifestCategoryHandler = ManifestCategoryHandler()
+                val manifestOptions = ManifestCategoryHandler.ManifestOptions(
+                    appCategory = try { ManifestCategoryHandler.AppCategory.valueOf(config.parityFeatures.manifestOptions.appCategory.uppercase()) } catch (_: Exception) { ManifestCategoryHandler.AppCategory.UNDEFINED },
+                    largeHeap = config.parityFeatures.manifestOptions.largeHeap
+                )
+                manifestCategoryHandler.apply(manifestFile, manifestOptions, config, diagnostics)
+
+                // Storage – Prompt to keep app data on uninstall – public reference: Prompt to keep app data on uninstall
+                // Equivalent functionality via hasFragileUserData
+                val uninstallHandler = com.clonemaster.storage.UninstallDataHandler()
+                val uninstallConfig = com.clonemaster.storage.UninstallDataHandler.UninstallConfig(
+                    promptToKeepData = config.parityFeatures.uninstallData.promptToKeepData || config.storage.preserveDataOnUninstall,
+                    hasFragileUserData = config.parityFeatures.uninstallData.hasFragileUserData || config.parityFeatures.uninstallData.promptToKeepData
+                )
+                uninstallHandler.applyToManifest(manifestFile, uninstallConfig, diagnostics)
+
+            } catch (e: Exception) {
+                diagnostics.warn("Manifest parity options failed: ${e.message}")
+            }
 
             // Step 3: Resource transform
             onProgress("Transforming resources...")

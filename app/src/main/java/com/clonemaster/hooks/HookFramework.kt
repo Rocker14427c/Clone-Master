@@ -85,6 +85,99 @@ object HookFramework {
             android.util.Log.w("CloneMaster", "Environment hooks failed", e)
         }
 
+        // Functional Parity – Independent Implementation for Public Feature Reference
+        // Terms: functional parity, equivalent functionality, independent implementation, public feature reference, compatibility with Android limitations
+        try {
+            // Tracking blocker – public reference: Disable AppsFlyer tracking
+            val trackingConfig = com.clonemaster.tracking.TrackingBlocker.TrackingBlockConfig(
+                disableAppsFlyer = cfg.parityFeatures.trackingBlocker.disableAppsFlyer,
+                disableAllTracking = cfg.parityFeatures.trackingBlocker.disableAllTracking
+            )
+            com.clonemaster.tracking.TrackingBlocker.Hooks.install(trackingConfig)
+
+            // CPU/GPU hide – public reference: Hide CPU/GPU info
+            val cpuGpuConfig = com.clonemaster.identity.CpuInfoSpoofer.CpuGpuConfig(
+                hideCpuInfo = cfg.parityFeatures.cpuGpu.hideCpuInfo,
+                hideGpuInfo = cfg.parityFeatures.cpuGpu.hideGpuInfo
+            )
+            val profileForCpu = try {
+                val json = context.assets.open("device_profile.json").bufferedReader().readText()
+                Gson().fromJson(json, com.clonemaster.cloning.models.DeviceProfile::class.java)
+            } catch (_: Exception) { null }
+            com.clonemaster.identity.CpuInfoSpoofer.Hooks.install(cpuGpuConfig, profileForCpu)
+
+            // Hook options – public reference: Safe mode now called Disable hooks, Native hooks
+            val hookOptions = com.clonemaster.developer.HookOptionsManager.HookOptions(
+                nativeHooksEnabled = cfg.parityFeatures.hookOptions.nativeHooksEnabled,
+                disableHooks = cfg.parityFeatures.hookOptions.disableHooks,
+                safeMode = cfg.parityFeatures.hookOptions.safeMode
+            )
+            com.clonemaster.developer.HookOptionsManager.Hooks.install(hookOptions)
+
+            // Privacy – Sneeze to exit, Knox warranty bit – public reference
+            com.clonemaster.privacy.KnoxWarrantySpoofer.Hooks.install(
+                com.clonemaster.privacy.KnoxWarrantySpoofer.KnoxConfig(
+                    spoofWarrantyBit = cfg.parityFeatures.knoxWarranty.spoofWarrantyBit,
+                    warrantyBitValue = cfg.parityFeatures.knoxWarranty.warrantyBitValue
+                )
+            )
+
+            // Display – Screensaver, Support chat – public reference
+            com.clonemaster.display.ScreensaverController.Hooks.install(
+                com.clonemaster.display.ScreensaverController.ScreensaverConfig(
+                    mode = try { com.clonemaster.display.ScreensaverController.ScreensaverMode.valueOf(cfg.parityFeatures.screensaver.mode) } catch (_: Exception) { com.clonemaster.display.ScreensaverController.ScreensaverMode.DEFAULT },
+                    preventDream = cfg.parityFeatures.screensaver.preventDream
+                )
+            )
+
+            // Media – Text on screen mute
+            com.clonemaster.media.TextBasedAudioMute.Hooks.install(
+                com.clonemaster.media.TextBasedAudioMute.TextMuteConfig(
+                    enabled = cfg.parityFeatures.textMute.enabled,
+                    muteTriggers = cfg.parityFeatures.textMute.muteTriggers
+                )
+            )
+
+            // Storage – Uninstall data prompt
+            // Manifest handling done at build time, hooks not needed
+
+            // Launching – Disable screen on/off events
+            com.clonemaster.launching.ScreenEventBlocker.Hooks.install(
+                com.clonemaster.launching.ScreenEventBlocker.ScreenEventConfig(
+                    disableScreenOnOffEvents = cfg.parityFeatures.screenEvents.disableScreenOnOffEvents
+                )
+            )
+
+            // Networking – Notification toggle, Tunnel Manager, Proxy list
+            com.clonemaster.networking.NotificationNetworkingToggle.Hooks.install(
+                com.clonemaster.networking.NotificationNetworkingToggle.NotificationToggleConfig(
+                    enabled = cfg.parityFeatures.notificationNetworkingToggle.enabled
+                )
+            )
+            com.clonemaster.networking.TunnelManager.Hooks.install(
+                com.clonemaster.networking.TunnelManager.TunnelManagerConfig(
+                    enabled = cfg.parityFeatures.tunnelManager.enabled,
+                    activeTunnelId = cfg.parityFeatures.tunnelManager.activeTunnelId
+                )
+            )
+
+            // Notification – Dots
+            com.clonemaster.notification.DotsController.Hooks.install(cfg.notification)
+
+            // Locale improved
+            com.clonemaster.display.LocaleManager.Hooks.install(
+                com.clonemaster.display.LocaleManager.LocaleConfig(
+                    customLocale = cfg.parityFeatures.locale.customLocale
+                )
+            )
+
+            // WebView script inject mode
+            // Handled via WebViewScriptManager
+
+        } catch (e: Exception) {
+            android.util.Log.w("CloneMaster", "Parity features hooks failed", e)
+        }
+
         // Identity & Privacy – now compatible with environment profile
         com.clonemaster.identity.IdentityManager.Hooks.install(cfg.identity)
         com.clonemaster.privacy.PrivacyManager.Hooks.install(cfg.privacy)
