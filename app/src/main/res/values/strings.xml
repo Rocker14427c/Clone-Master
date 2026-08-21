@@ -29,3 +29,12 @@
     <string name="webview_toolkit">WebView Toolkit</string>
     <string name="ai_assisted">AI-Assisted Controls</string>
 </resources>
+    <string name="environment_spoofing">Environment Spoofing / Detection Mitigation</string>
+    <string name="hide_root">Hide Root</string>
+    <string name="hide_emulator">Hide Emulator</string>
+    <string name="hide_dev_options">Hide Developer Options</string>
+    <string name="hide_usb_adb">Hide USB/ADB</string>
+    <string name="hide_mock_location">Hide Mock Location</string>
+    <string name="spoof_physical_profile">Spoof Physical Device Profile</string>
+    <string name="detection_diagnostics">Detection Diagnostics</string>
+    <string name="device_profiles">Device Profiles</string>

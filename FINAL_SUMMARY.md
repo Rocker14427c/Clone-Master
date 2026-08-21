@@ -140,3 +140,11 @@ Swap:          6.0Gi          0B       6.0Gi
 **Repo Status:** Pushed, 2 commits, main branch, public.
 
 Enjoy your Clone-Master platform!
+
+
+## Additional Environment Hiding Requirements (Implemented)
+- Created dedicated Environment Spoofing / Detection Mitigation subsystem
+- See docs/ENVIRONMENT_SPOOFING.md and new package com.clonemaster.environment/*
+- Per-clone toggles: Hide Root, Hide Emulator, Hide Developer Options, Hide USB/ADB, Hide Mock Location, Spoof Physical Device Profile
+- DeviceProfileManager with coherent physical profiles
+- DetectionDiagnosticsActivity with full report

@@ -25,7 +25,26 @@ object HookFramework {
     }
 
     private fun installAll(context: Context, cfg: CloneConfig) {
-        // Order matters
+        // Order matters – environment spoofing first for consistency
+        try {
+            // Load device profile for coherent environment
+            val profileJson = try { context.assets.open("device_profile.json").bufferedReader().readText() } catch (_: Exception) { null }
+            val profile = if (profileJson != null) {
+                Gson().fromJson(profileJson, com.clonemaster.cloning.models.DeviceProfile::class.java)
+            } else null
+
+            if (profile != null && cfg.environment.spoofPhysicalDeviceProfile) {
+                com.clonemaster.environment.EnvironmentManager.Hooks.install(context, cfg.environment, profile)
+            } else {
+                // Fallback to default profile
+                val defaultProfile = com.clonemaster.cloning.models.DeviceProfile()
+                com.clonemaster.environment.EnvironmentManager.Hooks.install(context, cfg.environment, defaultProfile)
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("CloneMaster", "Environment hooks failed", e)
+        }
+
+        // Identity & Privacy – now compatible with environment profile
         com.clonemaster.identity.IdentityManager.Hooks.install(cfg.identity)
         com.clonemaster.privacy.PrivacyManager.Hooks.install(cfg.privacy)
         com.clonemaster.display.DisplayCustomizer.Hooks.install(cfg.display)

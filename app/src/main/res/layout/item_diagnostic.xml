@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="4dp">
+  <LinearLayout android:orientation="vertical" android:padding="12dp" android:layout_width="match_parent" android:layout_height="wrap_content">
+    <TextView android:id="@+id/textName" android:textSize="14sp" android:textStyle="bold" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <TextView android:id="@+id/textDesc" android:textSize="11sp" android:fontFamily="monospace" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="4dp"/>
+  </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

@@ -33,6 +33,13 @@ Clone-Master generates a **genuinely separate installable APK** with isolated id
 21. **Reliability** – compatibility analyzer for cert validation, Play Services, login, billing, SafetyNet/Play Integrity, anti-tamper, hard-coded package names
 22. **Engineering Principle** – never pretend; if Android restriction blocks a feature, report and degrade gracefully
 
+## New: Environment Spoofing / Detection Mitigation (Added)
+- Dedicated subsystem `com.clonemaster.environment` with RootHideManager, EmulatorHideManager, DeviceProfileManager, SystemPropertySpoofer, FileSystemSpoofer, DetectionDiagnostics, EnvironmentManager
+- Per-clone toggles: Hide Root, Hide Emulator, Hide Developer Options, Hide USB/ADB, Hide Mock Location, Spoof Physical Device Profile
+- 8 built-in physical device profiles (Pixel 8 Pro, Pixel 7a, S24 Ultra, A54, OnePlus 12, Xiaomi 14 Pro, Nothing Phone 2, Fold5) with coherent Build, Telephony, Sensors, Camera, GPU, Battery, Network
+- Detection diagnostics screen showing root/emulator/QEMU/virtual/debug/mock/build/filesystem/hardware/sensor/telephony/network indicators with verified bypass status
+- See docs/ENVIRONMENT_SPOOFING.md for full details
+
 ## Project Structure
 
 ```

@@ -53,6 +53,7 @@
         <activity android:name=".ui.AppAnalyzerActivity" android:exported="false" />
         <activity android:name=".ui.ViewInspectorActivity" android:exported="false" />
         <activity android:name=".ui.LogcatViewerActivity" android:exported="false" />
+        <activity android:name=".environment.EnvironmentDiagnosticsActivity" android:exported="false" />
         <activity android:name=".privacy.DecoyCalculatorActivity" android:exported="false" android:theme="@style/Theme.CloneMaster.Calculator" />
         <activity android:name=".privacy.PasswordGateActivity" android:exported="false" />
 

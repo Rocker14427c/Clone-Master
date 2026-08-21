@@ -65,12 +65,227 @@ data class CloneConfig(
     // Developer
     var developer: DeveloperConfig = DeveloperConfig(),
 
+    // Environment Spoofing / Detection Mitigation (NEW)
+    var environment: EnvironmentConfig = EnvironmentConfig(),
+
     // Batch
     var isBatch: Boolean = false,
     var batchCount: Int = 1,
     var batchNameTemplate: String = "{appName} {index}"
 
 ) : Serializable
+
+// --- Environment Spoofing Config (dedicated subsystem) ---
+data class EnvironmentConfig(
+    // Master toggles – independently configurable per-clone
+    var hideRoot: Boolean = true,
+    var hideEmulator: Boolean = true,
+    var hideDeveloperOptions: Boolean = true,
+    var hideUsbAdb: Boolean = true,
+    var hideMockLocation: Boolean = true,
+    var spoofPhysicalDeviceProfile: Boolean = true,
+
+    // Root mitigation fine-grained
+    var rootHideLevel: RootHideLevel = RootHideLevel.AGGRESSIVE,
+    var hideRootArtifacts: Boolean = true,
+    var hideRootPaths: Boolean = true,
+    var hideRootProperties: Boolean = true,
+    var hideRootNativeChecks: Boolean = true,
+    var hideRootJavaChecks: Boolean = true,
+
+    // Emulator mitigation fine-grained
+    var emulatorHideLevel: EmulatorHideLevel = EmulatorHideLevel.FULL,
+    var spoofBuildFingerprint: Boolean = true,
+    var spoofManufacturerModel: Boolean = true,
+    var spoofHardwareIds: Boolean = true,
+    var spoofCpuAbi: Boolean = true,
+    var hideEmulatorFiles: Boolean = true,
+    var hideEmulatorNodes: Boolean = true,
+    var hideQemuProps: Boolean = true,
+    var hideEmulatorKernelInfo: Boolean = true,
+    var spoofTelephony: Boolean = true,
+    var spoofSimOperator: Boolean = true,
+    var spoofNetworkInterfaces: Boolean = true,
+    var spoofSensors: Boolean = true,
+    var spoofCamera: Boolean = true,
+    var spoofBattery: Boolean = true,
+    var spoofBluetooth: Boolean = true,
+    var spoofWifi: Boolean = true,
+    var spoofUsbAdbProps: Boolean = true,
+    var enforceConsistency: Boolean = true,
+
+    // Physical device profile to use for coherent spoofing
+    var physicalDeviceProfileId: String = "pixel8_pro", // default
+    var customDeviceProfile: DeviceProfile? = null,
+
+    // Diagnostics
+    var enableDetectionDiagnostics: Boolean = true,
+    var reportUnmitigatableChecks: Boolean = true
+
+) : Serializable
+
+enum class RootHideLevel { OFF, BASIC, STANDARD, AGGRESSIVE }
+enum class EmulatorHideLevel { OFF, BASIC, STANDARD, FULL }
+
+data class DeviceProfile(
+    var id: String = "pixel8_pro",
+    var displayName: String = "Pixel 8 Pro (Physical)",
+    var manufacturer: String = "Google",
+    var brand: String = "google",
+    var model: String = "Pixel 8 Pro",
+    var device: String = "husky",
+    var product: String = "husky",
+    var hardware: String = "husky",
+    var fingerprint: String = "google/husky/husky:14/AP2A.240905.003/12231197:user/release-keys",
+    var buildTags: String = "release-keys",
+    var buildType: String = "user",
+    var buildVersionRelease: String = "14",
+    var buildVersionSdk: String = "34",
+    var buildVersionIncremental: String = "12231197",
+    var buildHost: String = "abfarm-01117",
+    var buildUser: String = "android-build",
+    var board: String = "husky",
+    var bootloader: String = "cloudripper-1.0-13138964",
+    var cpuAbi: String = "arm64-v8a",
+    var cpuAbi2: String = "",
+    var supportedAbis: List<String> = listOf("arm64-v8a", "armeabi-v7a", "armeabi"),
+    var supported32BitAbis: List<String> = listOf("armeabi-v7a", "armeabi"),
+    var supported64BitAbis: List<String> = listOf("arm64-v8a"),
+    var hardwareFeatures: String = "qcom",
+    var radioVersion: String = "g5300g-240805-240805-B-12291344",
+    var kernelVersion: String = "5.15.131-android14-11",
+    var baseband: String = "g5300g",
+    // Telephony
+    var simOperator: String = "310260",
+    var simOperatorName: String = "T-Mobile",
+    var simCountryIso: String = "us",
+    var networkOperator: String = "310260",
+    var networkOperatorName: String = "T-Mobile",
+    var networkCountryIso: String = "us",
+    var phoneType: Int = 1, // GSM
+    // WiFi/BT
+    var wifiMacPrefix: String = "A4:CF:12", // locally administered randomized suffix
+    var btMacPrefix: String = "A4:CF:12",
+    // Sensors – physical device sensor list
+    var sensors: List<SensorProfile> = defaultPhysicalSensors(),
+    // Camera
+    var camera: CameraProfile = CameraProfile(),
+    // Battery
+    var battery: BatteryProfile = BatteryProfile(),
+    // GPU
+    var gpuVendor: String = "Qualcomm",
+    var gpuRenderer: String = "Adreno 750",
+    var gpuVersion: String = "OpenGL ES 3.2 V@0600.0",
+    // Network
+    var networkInterfaces: List<String> = listOf("wlan0", "rmnet_data0"),
+    // Filesystem – hide emulator artifacts
+    var hidePaths: List<String> = defaultEmulatorPathsToHide(),
+    // System props to spoof
+    var systemProps: Map<String, String> = defaultPhysicalSystemProps(),
+    // Consistency hash – ensures all above match
+    var isPhysical: Boolean = true
+) : Serializable
+
+data class SensorProfile(
+    var name: String,
+    var vendor: String,
+    var type: Int,
+    var version: Int = 1,
+    var resolution: Float = 0.01f,
+    var power: Float = 0.5f,
+    var isEmulatorFake: Boolean = false
+) : Serializable
+
+data class CameraProfile(
+    var hasCamera: Boolean = true,
+    var cameraCount: Int = 3, // back, front, ultrawide
+    var hasFlash: Boolean = true,
+    var focalLengths: List<Float> = listOf(6.5f, 2.2f),
+    var supportsHdr: Boolean = true,
+    var isEmulator: Boolean = false
+) : Serializable
+
+data class BatteryProfile(
+    var technology: String = "Li-ion",
+    var health: Int = 2, // GOOD
+    var present: Boolean = true,
+    var hasBattery: Boolean = true,
+    var capacityMah: Int = 5050,
+    var voltageMv: Int = 4300,
+    var temperatureDeciC: Int = 300,
+    var isEmulator: Boolean = false
+) : Serializable
+
+fun defaultPhysicalSensors(): List<SensorProfile> = listOf(
+    SensorProfile("BMI3XX Accelerometer", "Bosch", 1),
+    SensorProfile("BMI3XX Gyroscope", "Bosch", 4),
+    SensorProfile("AK0991X Magnetometer", "AKM", 2),
+    SensorProfile("STK_STK3XXX Proximity", "Sensortek", 8),
+    SensorProfile("STK_STK3XXX Light", "Sensortek", 5),
+    SensorProfile("BMP380 Barometer", "Bosch", 6),
+    SensorProfile("Gravity", "Google", 9),
+    SensorProfile("Linear Acceleration", "Google", 10),
+    SensorProfile("Rotation Vector", "Google", 11)
+)
+
+fun defaultEmulatorPathsToHide(): List<String> = listOf(
+    "/system/bin/su",
+    "/system/xbin/su",
+    "/system/app/Superuser.apk",
+    "/sbin/su",
+    "/system/bin/.ext/.su",
+    "/system/xbin/daemonsu",
+    "/system/etc/init.d/99SuperSUDaemon",
+    "/system/bin/.ext",
+    "/system/xbin/.ext",
+    "/data/local/xbin/su",
+    "/data/local/bin/su",
+    "/system/sd/xbin/su",
+    "/system/bin/failsafe/su",
+    "/data/local/su",
+    "/su/bin/su",
+    "/su/bin",
+    "/system/xbin/busybox",
+    "/system/bin/busybox",
+    "/data/local/tmp/qemu-props",
+    "/proc/tty/drivers",
+    "/proc/cpuinfo",
+    "/system/lib/libc_malloc_debug_qemu.so",
+    "/sys/qemu_trace",
+    "/system/bin/qemu-props",
+    "/dev/socket/qemud",
+    "/dev/qemu_pipe",
+    "/dev/socket/genyd",
+    "/dev/socket/baseband_genyd"
+)
+
+fun defaultPhysicalSystemProps(): Map<String, String> = mapOf(
+    "ro.kernel.qemu" to "0",
+    "ro.hardware" to "husky",
+    "ro.revision" to "0",
+    "ro.kernel.android.qemud" to "",
+    "ro.kernel.android.bootanim" to "0",
+    "ro.kernel.android.checkjni" to "0",
+    "ro.build.fingerprint" to "google/husky/husky:14/AP2A.240905.003/12231197:user/release-keys",
+    "ro.build.characteristics" to "nosdcard",
+    "ro.product.model" to "Pixel 8 Pro",
+    "ro.product.manufacturer" to "Google",
+    "ro.product.brand" to "google",
+    "ro.product.device" to "husky",
+    "ro.product.board" to "husky",
+    "ro.product.cpu.abi" to "arm64-v8a",
+    "ro.product.cpu.abilist" to "arm64-v8a,armeabi-v7a,armeabi",
+    "ro.product.cpu.abilist32" to "armeabi-v7a,armeabi",
+    "ro.product.cpu.abilist64" to "arm64-v8a",
+    "ro.debuggable" to "0",
+    "ro.secure" to "1",
+    "ro.build.type" to "user",
+    "ro.build.tags" to "release-keys",
+    "ro.build.flavor" to "husky-user",
+    "ro.build.host" to "abfarm-01117",
+    "ro.build.user" to "android-build",
+    "ro.build.selinux" to "1"
+)
 
 enum class IconBadge { NONE, NUMBER, DOT, CUSTOM_TEXT }
 

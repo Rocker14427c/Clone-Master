@@ -89,13 +89,27 @@ class CloneEngine(private val context: Context) {
             val libDir = File(decodedDir, "lib")
             nativeHandler.handle(libDir, config, diagnostics)
 
-            // Step 6: Bundle clone_config.json into assets
-            onProgress("Bundling config...")
+            // Step 6: Bundle clone_config.json + environment + device profile into assets
+            onProgress("Bundling config & environment...")
             val assetsDir = File(decodedDir, "assets")
             assetsDir.mkdirs()
             val configJson = gsonConfig(config)
             File(assetsDir, "clone_config.json").writeText(configJson)
             File(assetsDir, "clone_identity.json").writeText(gsonIdentity(config))
+            File(assetsDir, "environment_config.json").writeText(gsonEnvironment(config))
+
+            // Bundle coherent physical device profile
+            try {
+                val envManager = com.clonemaster.environment.EnvironmentManager(context)
+                val profile = envManager.getDeviceProfile(config.environment.physicalDeviceProfileId)
+                val hooksConfig = envManager.generateHooksConfig(config.environment)
+                File(assetsDir, "device_profile.json").writeText(com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(profile))
+                File(assetsDir, "environment_hooks.json").writeText(com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(hooksConfig))
+                // Also bundle as device_profile.json for HookFramework
+                diagnostics.log("Bundled device profile ${profile.id} with ${hooksConfig.systemProps.size} spoofed props and ${hooksConfig.hidePaths.size} hidden paths")
+            } catch (e: Exception) {
+                diagnostics.warn("Failed to bundle device profile: ${e.message}")
+            }
 
             // Step 7: OBB handling
             if (config.includeObb || config.game.bundleObb) {
@@ -191,6 +205,10 @@ class CloneEngine(private val context: Context) {
 
     private fun gsonIdentity(config: CloneConfig): String {
         return com.google.gson.Gson().toJson(config.identity)
+    }
+
+    private fun gsonEnvironment(config: CloneConfig): String {
+        return com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(config.environment)
     }
 
     private fun getOrCreateKeystore(): File {
