@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="4dp">
+
+    <LinearLayout android:orientation="vertical" android:padding="12dp" android:layout_width="match_parent" android:layout_height="wrap_content">
+
+        <LinearLayout android:orientation="horizontal" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <ImageView android:id="@+id/optionIcon" android:layout_width="24dp" android:layout_height="24dp" android:src="@mipmap/ic_launcher"/>
+            <TextView android:id="@+id/optionName" android:textStyle="bold" android:layout_marginStart="8dp" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Option"/>
+            <TextView android:id="@+id/advancedBadge" android:text="ADVANCED" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+        </LinearLayout>
+
+        <TextView android:id="@+id/optionDescription" android:textSize="11sp" android:textColor="#757575" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Description"/>
+        <TextView android:id="@+id/optionCompatibility" android:textSize="10sp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🟢 Supported"/>
+
+        <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp">
+            <com.google.android.material.textfield.TextInputEditText android:id="@+id/optionTextField" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Custom value" android:textSize="12sp"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

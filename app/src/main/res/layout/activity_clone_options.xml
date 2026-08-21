@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F8F9FA">
+
+    <!-- Toolbar with Clone-Master identity (own visual identity, not copying App Cloner) -->
+    <com.google.android.material.appbar.AppBarLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:title="Clone Configuration"
+            app:titleTextColor="#FFFFFF"
+            android:background="#1565C0"/>
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- Search field – prominent -->
+    <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="12dp" app:cardCornerRadius="12dp" app:cardElevation="2dp">
+        <LinearLayout android:orientation="horizontal" android:padding="12dp" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@android:drawable/ic_search_category_default" android:contentDescription="Search"/>
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/searchOptions"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:hint="Search clone options... (GPS, proxy, clipboard, root, dark mode, data, WebView...)"
+                android:background="@null"
+                android:textSize="14sp"/>
+            <ImageView android:id="@+id/clearSearch" android:layout_width="24dp" android:layout_height="24dp" android:src="@android:drawable/ic_menu_close_clear_cancel" android:contentDescription="Clear"/>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Presets -->
+    <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="12dp" android:layout_marginBottom="8dp" app:cardCornerRadius="12dp">
+        <LinearLayout android:orientation="horizontal" android:padding="12dp" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:text="Preset:" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+            <Spinner android:id="@+id/presetSpinner" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="12dp"/>
+            <Button android:id="@+id/buttonSaveConfig" android:text="Save" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp"/>
+            <Button android:id="@+id/buttonLoadConfig" android:text="Load" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Categories horizontal -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerCategories"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginHorizontal="12dp"/>
+
+    <!-- Options list -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerOptions"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_margin="12dp"/>
+
+    <!-- Summary and Build -->
+    <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="12dp" app:cardCornerRadius="12dp" app:cardElevation="4dp">
+        <LinearLayout android:orientation="vertical" android:padding="16dp" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/textSummary" android:text="Clone Summary – Source app, Package, Version, Clone name, Clone package, Device profile, Enabled options, Data bundle, Network, Warnings, Estimated size" android:textSize="12sp" android:fontFamily="monospace" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+            <Button android:id="@+id/buttonBuildClone" android:text="Build Clone" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:backgroundTint="#1565C0"/>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+</LinearLayout>

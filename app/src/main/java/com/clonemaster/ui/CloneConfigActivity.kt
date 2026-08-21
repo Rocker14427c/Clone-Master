@@ -233,10 +233,14 @@ class AppAnalyzerActivity : AppCompatActivity() {
             }
 
             buttonClone.setOnClickListener {
-                val intent = android.content.Intent(this, CloneConfigActivity::class.java).apply {
+                // New flow: App Details → Clone Configuration (CloneOptionsActivity) → Build
+                val intent = android.content.Intent(this, CloneOptionsActivity::class.java).apply {
                     putExtra("originalPackage", appInfo.packageName)
                     putExtra("package", appInfo.packageName)
                     putExtra("clonePackage", "${appInfo.packageName}.clone1")
+                    putExtra("appName", appInfo.appName)
+                    putExtra("versionName", appInfo.versionName)
+                    putExtra("versionCode", appInfo.versionCode)
                 }
                 startActivity(intent)
             }

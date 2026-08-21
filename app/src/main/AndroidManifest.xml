@@ -50,6 +50,8 @@
         </activity>
 
         <activity android:name=".ui.CloneConfigActivity" android:exported="false" />
+        <activity android:name=".ui.CloneOptionsActivity" android:exported="false" android:theme="@style/Theme.CloneMaster" />
+        <activity android:name=".ui.BuildProgressActivity" android:exported="false" android:theme="@style/Theme.CloneMaster" />
         <activity android:name=".ui.AppAnalyzerActivity" android:exported="false" />
         <activity android:name=".ui.ViewInspectorActivity" android:exported="false" />
         <activity android:name=".ui.LogcatViewerActivity" android:exported="false" />
