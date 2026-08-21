@@ -1,0 +1,3 @@
+-keep class com.clonemaster.hooks.** { *; }
+-keep class com.clonemaster.cloning.** { *; }
+-dontwarn **
