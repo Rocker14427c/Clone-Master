@@ -33,6 +33,15 @@ Clone-Master generates a **genuinely separate installable APK** with isolated id
 21. **Reliability** – compatibility analyzer for cert validation, Play Services, login, billing, SafetyNet/Play Integrity, anti-tamper, hard-coded package names
 22. **Engineering Principle** – never pretend; if Android restriction blocks a feature, report and degrade gracefully
 
+## New: Bundle & Restore App Data (Added)
+- Dedicated feature `com.clonemaster.databundle` with DataBundleAnalyzer, DataArchiveManager, DataRestoreEngine, FirstRunImportActivity, BackupManager
+- Build-time: analyzes SharedPrefs, SQLite/Room, files, no_backup, WebView cookies, external dirs, OBB, custom dirs; user chooses categories; creates encrypted/compressed archive with metadata (source/clone package, Android version, checksums)
+- Installation: first-run import screen with progress bar (Importing data... Restoring files... Restoring database... Restoring WebView... Finalizing... Complete), transformations for package-name/path, validation, rollback, import log, retry
+- Safety: never modifies original, detects Android/app/DB schema incompatibilities, verifies final dir, handles Keystore/hardware-bound data with warning "Some account/session data could not be restored..."
+- Format: Clone.apk + Clone.data or single package /clone.apk + /data/archive + /manifest.json + /checksums, optional AES256 encrypted
+- Backup: export clone+data, import, backup/restore settings, data-only backup/restore, encrypted backups, integrity verification, versioned format, migration between clone versions
+- See docs/DATA_BUNDLING.md
+
 ## New: Environment Spoofing / Detection Mitigation (Added)
 - Dedicated subsystem `com.clonemaster.environment` with RootHideManager, EmulatorHideManager, DeviceProfileManager, SystemPropertySpoofer, FileSystemSpoofer, DetectionDiagnostics, EnvironmentManager
 - Per-clone toggles: Hide Root, Hide Emulator, Hide Developer Options, Hide USB/ADB, Hide Mock Location, Spoof Physical Device Profile

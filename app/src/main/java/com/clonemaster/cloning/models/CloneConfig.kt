@@ -65,14 +65,99 @@ data class CloneConfig(
     // Developer
     var developer: DeveloperConfig = DeveloperConfig(),
 
-    // Environment Spoofing / Detection Mitigation (NEW)
+    // Environment Spoofing / Detection Mitigation
     var environment: EnvironmentConfig = EnvironmentConfig(),
+
+    // Data Bundling / Migration (NEW)
+    var dataBundle: DataBundleConfig = DataBundleConfig(),
 
     // Batch
     var isBatch: Boolean = false,
     var batchCount: Int = 1,
     var batchNameTemplate: String = "{appName} {index}"
 
+) : Serializable
+
+// --- Data Bundling / Migration Config ---
+data class DataBundleConfig(
+    var enabled: Boolean = false,
+    var bundleSharedPrefs: Boolean = true,
+    var bundleDatabases: Boolean = true,
+    var bundleRoomDatabases: Boolean = true,
+    var bundleFiles: Boolean = true,
+    var bundleCacheIndependentFiles: Boolean = true,
+    var bundleWebViewData: Boolean = true,
+    var bundleExternalAppDirs: Boolean = true,
+    var bundleObbDirs: Boolean = true,
+    var customDirs: MutableList<String> = mutableListOf(), // user explicitly selected directories
+    var excludeDirs: MutableList<String> = mutableListOf(),
+    var selectedCategories: MutableList<DataCategory> = mutableListOf(DataCategory.SHARED_PREFS, DataCategory.DATABASES, DataCategory.FILES),
+    var compression: CompressionType = CompressionType.ZSTD,
+    var encryption: EncryptionType = EncryptionType.AES256,
+    var encryptionPassword: String = "", // optional, if empty no encryption or use device-derived key
+    var createSeparateDataFile: Boolean = false, // if true: Clone.apk + Clone.data, else embed in apk/assets
+    var embedInApk: Boolean = true,
+    var maxBundleSizeMb: Int = 500,
+    var includeNoBackupFiles: Boolean = false,
+    var transformPaths: Boolean = true, // apply package-name/path/provider transformations
+    var version: Int = 1
+) : Serializable
+
+enum class DataCategory {
+    SHARED_PREFS,
+    DATABASES,
+    ROOM_DATABASES,
+    FILES,
+    CACHE_INDEPENDENT,
+    WEBVIEW_DATA,
+    EXTERNAL_APP_DIRS,
+    OBB_DIRS,
+    CUSTOM_DIRS
+}
+
+enum class CompressionType { NONE, ZIP, GZIP, ZSTD }
+enum class EncryptionType { NONE, AES256, CHACHA20 }
+
+data class DataBundleMetadata(
+    var sourcePackage: String = "",
+    var clonePackage: String = "",
+    var sourceVersionName: String = "",
+    var sourceVersionCode: Long = 0,
+    var cloneVersionName: String = "",
+    var cloneVersionCode: Long = 0,
+    var androidVersion: Int = 0,
+    var androidRelease: String = "",
+    var dataFormatVersion: Int = 2,
+    var createdAt: Long = System.currentTimeMillis(),
+    var includedCategories: List<DataCategory> = emptyList(),
+    var includedDirs: List<String> = emptyList(),
+    var excludedDirs: List<String> = emptyList(),
+    var archiveName: String = "",
+    var archiveSize: Long = 0,
+    var archiveChecksumSha256: String = "",
+    var fileCount: Int = 0,
+    var totalBytes: Long = 0,
+    var encryption: EncryptionType = EncryptionType.NONE,
+    var compression: CompressionType = CompressionType.ZSTD,
+    var hasKeystoreData: Boolean = false, // indicates some data could not be restored
+    var notes: String = ""
+) : Serializable
+
+data class DataBundleManifest(
+    var metadata: DataBundleMetadata = DataBundleMetadata(),
+    var files: List<DataBundleFileEntry> = emptyList(),
+    var checksums: Map<String, String> = emptyMap(), // path -> sha256
+    var version: Int = 2
+) : Serializable
+
+data class DataBundleFileEntry(
+    var originalPath: String = "",
+    var relativePath: String = "", // inside archive
+    var type: DataCategory = DataCategory.FILES,
+    var size: Long = 0,
+    var checksum: String = "",
+    var requiresTransformation: Boolean = false,
+    var transformedPath: String = "" // after package-name/path transformation
 ) : Serializable
 
 // --- Environment Spoofing Config (dedicated subsystem) ---

@@ -116,6 +116,110 @@ class CloneEngine(private val context: Context) {
                 handleObb(config, decodedDir)
             }
 
+            // Step 7b: Data Bundling – Bundle App Data feature
+            var dataArchiveFile: File? = null
+            var dataManifest: com.clonemaster.cloning.models.DataBundleManifest? = null
+            if (config.dataBundle.enabled) {
+                onProgress("Analyzing app data for bundling...")
+                try {
+                    val dataAnalyzer = com.clonemaster.databundle.DataBundleAnalyzer(context)
+                    val analysis = dataAnalyzer.analyze(config.originalPackage)
+                    diagnostics.log("Data analysis: ${analysis.categories.size} categories, ${analysis.totalSize / 1024 / 1024} MB total")
+                    analysis.warnings.forEach { diagnostics.warn(it) }
+
+                    // Let user choose – config already contains selectedCategories and customDirs
+                    val selectedFiles = dataAnalyzer.getExportablePaths(
+                        config.originalPackage,
+                        config.dataBundle.selectedCategories,
+                        config.dataBundle.customDirs
+                    )
+
+                    // Filter by excludeDirs
+                    val filteredFiles = selectedFiles.filter { file ->
+                        config.dataBundle.excludeDirs.none { exclude -> file.absolutePath.contains(exclude) }
+                    }
+
+                    if (filteredFiles.isNotEmpty()) {
+                        onProgress("Bundling ${filteredFiles.size} data directories...")
+                        val dataBundleDir = File(workDir, "data_bundle")
+                        dataBundleDir.mkdirs()
+
+                        val metadata = com.clonemaster.cloning.models.DataBundleMetadata(
+                            sourcePackage = config.originalPackage,
+                            clonePackage = config.clonePackage,
+                            sourceVersionName = config.versionName,
+                            sourceVersionCode = config.versionCode,
+                            cloneVersionName = config.versionName,
+                            cloneVersionCode = config.versionCode,
+                            androidVersion = android.os.Build.VERSION.SDK_INT,
+                            androidRelease = android.os.Build.VERSION.RELEASE ?: "",
+                            dataFormatVersion = 2,
+                            includedCategories = config.dataBundle.selectedCategories,
+                            includedDirs = filteredFiles.map { it.absolutePath },
+                            excludedDirs = config.dataBundle.excludeDirs,
+                            compression = config.dataBundle.compression,
+                            encryption = config.dataBundle.encryption
+                        )
+
+                        val archiveManager = com.clonemaster.databundle.DataArchiveManager(context)
+                        val (archive, manifest) = archiveManager.createArchive(
+                            sourcePackage = config.originalPackage,
+                            clonePackage = config.clonePackage,
+                            selectedFiles = filteredFiles,
+                            metadata = metadata,
+                            config = config.dataBundle,
+                            outputDir = dataBundleDir,
+                            onProgress = { msg -> onProgress(msg); diagnostics.log(msg) }
+                        )
+
+                        dataArchiveFile = archive
+                        dataManifest = manifest
+
+                        // Embed or package as associated payload
+                        if (config.dataBundle.embedInApk) {
+                            onProgress("Embedding data archive into APK assets...")
+                            // Copy archive into assets/data/
+                            val assetsDataDir = File(assetsDir, "data")
+                            assetsDataDir.mkdirs()
+                            archive.copyTo(File(assetsDataDir, "archive.zip"), overwrite = true)
+                            // Also copy manifest
+                            File(assetsDir, "data_manifest.json").writeText(
+                                com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(manifest)
+                            )
+                            File(assetsDir, "data_bundle_metadata.json").writeText(
+                                com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(metadata)
+                            )
+                            diagnostics.log("Embedded data archive ${archive.length() / 1024 / 1024} MB into APK")
+                        } else {
+                            // Create separate .data file – will be output alongside APK later
+                            diagnostics.log("Data archive will be packaged as separate file: ${archive.absolutePath}")
+                        }
+
+                        // Inject first-run import activity into manifest if not already present
+                        // Ensure clone launches FirstRunImportActivity on first run
+                        try {
+                            val manifestFile = File(decodedDir, "AndroidManifest.xml")
+                            var manifestContent = manifestFile.readText()
+                            if (!manifestContent.contains("FirstRunImportActivity")) {
+                                val importActivityEntry = """
+                                    <activity android:name="com.clonemaster.databundle.FirstRunImportActivity" android:exported="false" android:theme="@style/Theme.CloneMaster" />
+                                """.trimIndent()
+                                manifestContent = manifestContent.replace("</application>", "    $importActivityEntry\n    </application>")
+                                manifestFile.writeText(manifestContent)
+                            }
+                        } catch (e: Exception) {
+                            diagnostics.warn("Failed to inject import activity: ${e.message}")
+                        }
+                    } else {
+                        diagnostics.warn("No exportable data found for bundling")
+                    }
+
+                } catch (e: Exception) {
+                    diagnostics.warn("Data bundling failed: ${e.message} – clone will be created without data")
+                    e.printStackTrace()
+                }
+            }
+
             // Step 8: apktool build
             onProgress("Building APK...")
             val unsignedApk = File(buildDir, "unsigned.apk")
@@ -138,16 +242,48 @@ class CloneEngine(private val context: Context) {
             val signResult = signingPipeline.sign(unsignedApk, signedDir, keystore)
             diagnostics.log("Signed APK: ${signResult.signedApk.absolutePath}, verified=${signResult.verified}")
 
-            // Step 10: Copy to output
+            // Step 10: Copy to output – handle both single APK and APK+data packaging
             val outputDir = File(context.getExternalFilesDir(null), "clones")
             outputDir.mkdirs()
             val finalApk = File(outputDir, "${config.clonePackage}_${config.versionName}.apk")
             signResult.signedApk.copyTo(finalApk, overwrite = true)
 
-            onProgress("Clone complete: ${finalApk.absolutePath}")
+            var finalDataFile: File? = null
+            if (config.dataBundle.enabled && !config.dataBundle.embedInApk && dataArchiveFile != null) {
+                // Package as separate .data file alongside APK
+                finalDataFile = File(outputDir, "${config.clonePackage}_${config.versionName}.data")
+                dataArchiveFile.copyTo(finalDataFile, overwrite = true)
+                diagnostics.log("Created separate data file: ${finalDataFile.absolutePath}")
+
+                // Also create combined backup package: /clone.apk + /data/archive + /manifest.json + /checksums
+                val backupManager = com.clonemaster.databundle.BackupManager(context)
+                val combinedPackage = backupManager.exportCloneAndData(
+                    cloneConfig = config,
+                    apkFile = finalApk,
+                    dataArchive = finalDataFile,
+                    outputDir = outputDir,
+                    encrypt = config.dataBundle.encryption != com.clonemaster.cloning.models.EncryptionType.NONE,
+                    password = config.dataBundle.encryptionPassword,
+                    onProgress = { msg -> onProgress(msg) }
+                )
+                diagnostics.log("Created combined backup package: ${combinedPackage.absolutePath}")
+            }
+
+            onProgress("Clone complete: ${finalApk.absolutePath}" + (finalDataFile?.let { " + ${it.name}" } ?: ""))
 
             // Save config for backup/restore
             saveCloneConfig(config)
+
+            // Save data bundle manifest for future restore
+            if (dataManifest != null) {
+                try {
+                    val manifestDir = File(context.filesDir, "data_manifests")
+                    manifestDir.mkdirs()
+                    File(manifestDir, "${config.clonePackage}.json").writeText(
+                        com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(dataManifest)
+                    )
+                } catch (_: Exception) {}
+            }
 
             Result.success(finalApk)
         } catch (e: Exception) {

@@ -25,6 +25,47 @@ object HookFramework {
     }
 
     private fun installAll(context: Context, cfg: CloneConfig) {
+        // Check for bundled data first – if present and migration not completed, launch import activity
+        try {
+            val hasBundledData = try {
+                context.assets.open("data/archive.zip").close()
+                true
+            } catch (_: Exception) {
+                try { context.assets.open("data_manifest.json").close(); true } catch (_: Exception) { false }
+            }
+            val prefs = context.getSharedPreferences("clone_migration", Context.MODE_PRIVATE)
+            val migrationCompleted = prefs.getBoolean("migration_completed", false)
+
+            if (hasBundledData && !migrationCompleted && cfg.dataBundle.enabled) {
+                // Launch FirstRunImportActivity on next activity creation
+                (context.applicationContext as? android.app.Application)?.registerActivityLifecycleCallbacks(
+                    object : android.app.Application.ActivityLifecycleCallbacks {
+                        var launched = false
+                        override fun onActivityCreated(a: android.app.Activity, b: android.os.Bundle?) {
+                            if (!launched && a !is com.clonemaster.databundle.FirstRunImportActivity) {
+                                launched = true
+                                try {
+                                    val intent = android.content.Intent(a, com.clonemaster.databundle.FirstRunImportActivity::class.java)
+                                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    a.startActivity(intent)
+                                } catch (e: Exception) {
+                                    android.util.Log.w("CloneMaster", "Failed to launch import activity", e)
+                                }
+                            }
+                        }
+                        override fun onActivityStarted(a: android.app.Activity) {}
+                        override fun onActivityResumed(a: android.app.Activity) {}
+                        override fun onActivityPaused(a: android.app.Activity) {}
+                        override fun onActivityStopped(a: android.app.Activity) {}
+                        override fun onActivitySaveInstanceState(a: android.app.Activity, b: android.os.Bundle) {}
+                        override fun onActivityDestroyed(a: android.app.Activity) {}
+                    }
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("CloneMaster", "Data bundle check failed", e)
+        }
+
         // Order matters – environment spoofing first for consistency
         try {
             // Load device profile for coherent environment

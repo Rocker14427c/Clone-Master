@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="24dp"
+    android:gravity="center_horizontal">
+
+    <TextView android:text="Clone-Master Data Import" android:textSize="22sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="16dp"/>
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:progress="0"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView android:id="@+id/textStatus" android:text="Importing application data..." android:textSize="18sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="8dp"/>
+
+    <TextView android:id="@+id/textDetail" android:text="Preparing..." android:textSize="14sp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="16dp"/>
+
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:background="#F5F5F5" android:padding="8dp">
+        <TextView android:id="@+id/textLog" android:textSize="11sp" android:fontFamily="monospace" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    </ScrollView>
+
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp">
+        <Button android:id="@+id/buttonRetry" android:text="Retry" android:enabled="false" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
+        <Button android:id="@+id/buttonContinue" android:text="Continue" android:enabled="false" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+    </LinearLayout>
+
+    <TextView android:text="Some account/session data could not be restored because it is protected by Android or the application (Keystore, hardware-backed, certificate-bound, server-side)." android:textSize="10sp" android:textColor="#757575" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"/>
+
+</LinearLayout>
