@@ -1,0 +1,8 @@
+# Copy this file to local.properties and set your Android SDK path
+# Do NOT commit local.properties (already in .gitignore)
+# Example:
+# sdk.dir=/home/user/android-sdk
+# sdk.dir=/Users/username/Library/Android/sdk
+# sdk.dir=C\:\\Users\\username\\AppData\\Local\\Android\\Sdk
+
+sdk.dir=/home/user/android-sdk

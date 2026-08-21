@@ -62,10 +62,26 @@
 
         <service android:name=".networking.TunProxyService" android:exported="false" />
 
+        <service android:name=".launching.PersistentCloneService" android:exported="false" android:foregroundServiceType="dataSync" />
+
         <receiver android:name=".launching.DialerLaunchReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.provider.Telephony.SECRET_CODE" />
                 <data android:scheme="android_secret_code" android:host="7777" />
+            </intent-filter>
+        </receiver>
+
+        <receiver android:name=".launching.BootReceiver" android:exported="true" android:enabled="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+
+        <receiver android:name=".networking.NotificationNetworkingToggle$ToggleReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="com.clonemaster.TOGGLE_NETWORK" />
             </intent-filter>
         </receiver>
 

@@ -52,12 +52,20 @@ dependencies {
     implementation("androidx.multidex:multidex:2.0.1")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0") // QA Fix: for lifecycleScope to avoid CoroutineScope leak
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.github.bumptech.glide:glide:4.16.0")
     implementation("net.dongliu:apk-parser:2.6.10")
     implementation("com.jaredrummler:apkparser:3.0.0-alpha2")
-    // Hook frameworks (abstraction, real so files expected in jniLibs)
-    // Pine, ByteHook – we include stub; real implementation loads libappcloner.so
     implementation("org.ow2.asm:asm:9.6")
     implementation("org.ow2.asm:asm-commons:9.6")
+    implementation("com.google.code.gson:gson:2.10.1")
+
+    // Testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.mockito:mockito-core:5.8.0")
+    testImplementation("androidx.test:core:1.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }

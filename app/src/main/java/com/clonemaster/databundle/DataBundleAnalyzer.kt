@@ -7,7 +7,12 @@ import java.io.File
 
 /**
  * Build-time: Analyze source application's accessible data
- * Identifies exportable data where technically permitted
+ * QA Fixes:
+ * - Fix repeated walkTopDown() traversal – now does single walk per dataDir and caches results
+ * - Avoids OOM by not loading entire file list into memory multiple times
+ * - Handles permission issues gracefully without crashing
+ * - Validates paths to prevent path traversal
+ * - Logs safely without sensitive data
  */
 class DataBundleAnalyzer(private val context: Context) {
 
@@ -33,98 +38,154 @@ class DataBundleAnalyzer(private val context: Context) {
         val categories = mutableMapOf<DataCategory, CategoryInfo>()
 
         val pm = context.packageManager
-        val appInfo = try { pm.getApplicationInfo(packageName, 0) } catch (e: Exception) {
-            warnings.add("App not found or not accessible: ${e.message}")
+        val appInfo = try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                pm.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getApplicationInfo(packageName, 0)
+            }
+        } catch (e: PackageManager.NameNotFoundException) {
+            warnings.add("App not found: $packageName")
+            android.util.Log.w("CloneMaster", "App not found: $packageName", e)
+            return AnalysisResult(packageName, emptyMap(), 0, warnings)
+        } catch (e: SecurityException) {
+            warnings.add("Permission denied to access $packageName: ${e.message} – QUERY_ALL_PACKAGES may be needed")
+            android.util.Log.w("CloneMaster", "Security exception for $packageName", e)
+            return AnalysisResult(packageName, emptyMap(), 0, warnings)
+        } catch (e: Exception) {
+            warnings.add("App not accessible: ${e.message}")
+            android.util.Log.w("CloneMaster", "App not accessible: $packageName", e)
             return AnalysisResult(packageName, emptyMap(), 0, warnings)
         }
 
         val dataDir = File(appInfo.dataDir)
-        val totalSize = dataDir.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
+
+        // QA Fix: Single walkTopDown for entire dataDir, cache results, instead of 7 separate walks
+        // This reduces I/O and prevents ANR on large data dirs
+        val allFilesCache: List<File> = try {
+            if (dataDir.exists() && dataDir.canRead()) {
+                dataDir.walkTopDown().filter { it.isFile }.toList()
+            } else {
+                warnings.add("Data dir not readable without root – only external dirs and accessible files can be bundled")
+                emptyList()
+            }
+        } catch (e: Exception) {
+            warnings.add("Failed to walk data dir: ${e.message}")
+            android.util.Log.w("CloneMaster", "walkTopDown failed for ${dataDir.absolutePath}", e)
+            emptyList()
+        }
+
+        val totalSize = allFilesCache.sumOf { it.length() }
+
+        // Helper to get files for a subdir from cache, without re-walking
+        fun getFilesForSubdir(subDirName: String): List<File> {
+            return allFilesCache.filter { it.absolutePath.contains("/$subDirName/") || it.parentFile?.name == subDirName }
+        }
 
         // SharedPreferences
         val prefsDir = File(dataDir, "shared_prefs")
+        val prefsFiles = getFilesForSubdir("shared_prefs")
         categories[DataCategory.SHARED_PREFS] = CategoryInfo(
             DataCategory.SHARED_PREFS,
             prefsDir.absolutePath,
-            fileCount = prefsDir.listFiles()?.size ?: 0,
-            sizeBytes = prefsDir.walkTopDown().filter { it.isFile }.map { it.length() }.sum(),
+            fileCount = prefsFiles.size,
+            sizeBytes = prefsFiles.sumOf { it.length() },
             accessible = prefsDir.exists() && prefsDir.canRead(),
-            description = "SharedPreferences XML files – preferences, settings, session tokens (non-Keystore)",
-            examples = prefsDir.listFiles()?.map { it.name }?.take(5) ?: emptyList()
+            description = "SharedPreferences XML – preferences, settings, non-Keystore session tokens",
+            examples = prefsFiles.map { it.name }.take(5)
         )
 
-        // Databases (SQLite)
+        // Databases
         val dbDir = File(dataDir, "databases")
+        val dbFiles = getFilesForSubdir("databases")
         categories[DataCategory.DATABASES] = CategoryInfo(
             DataCategory.DATABASES,
             dbDir.absolutePath,
-            fileCount = dbDir.listFiles()?.count { it.extension == "db" || it.extension == "sqlite" } ?: 0,
-            sizeBytes = dbDir.walkTopDown().filter { it.isFile }.map { it.length() }.sum(),
+            fileCount = dbFiles.count { it.extension == "db" || it.extension == "sqlite" },
+            sizeBytes = dbFiles.sumOf { it.length() },
             accessible = dbDir.exists(),
             description = "SQLite databases – may include Room DBs, app data, offline content",
-            examples = dbDir.listFiles()?.map { it.name }?.take(5) ?: emptyList()
+            examples = dbFiles.map { it.name }.take(5)
         )
 
-        // Room databases – subset of databases, detect via journal files or naming
+        // Room databases – subset
+        val roomFiles = dbFiles.filter { it.name.contains("room", true) || it.name.endsWith(".db") }
         categories[DataCategory.ROOM_DATABASES] = CategoryInfo(
             DataCategory.ROOM_DATABASES,
             dbDir.absolutePath,
-            fileCount = dbDir.listFiles()?.count { it.name.contains("room") || it.extension == "db" } ?: 0,
-            sizeBytes = dbDir.walkTopDown().filter { it.isFile && it.name.contains("room") }.map { it.length() }.sum(),
+            fileCount = roomFiles.size,
+            sizeBytes = roomFiles.sumOf { it.length() },
             accessible = dbDir.exists(),
-            description = "Room databases – detected by naming or associated files",
-            examples = dbDir.listFiles()?.filter { it.name.contains("room") }?.map { it.name }?.take(3) ?: emptyList()
+            description = "Room databases – detected by naming",
+            examples = roomFiles.map { it.name }.take(3)
         )
 
         // Files
         val filesDir = File(dataDir, "files")
+        val filesFiles = getFilesForSubdir("files")
         categories[DataCategory.FILES] = CategoryInfo(
             DataCategory.FILES,
             filesDir.absolutePath,
-            fileCount = filesDir.walkTopDown().filter { it.isFile }.count(),
-            sizeBytes = filesDir.walkTopDown().filter { it.isFile }.map { it.length() }.sum(),
+            fileCount = filesFiles.size,
+            sizeBytes = filesFiles.sumOf { it.length() },
             accessible = filesDir.exists(),
             description = "Application files – persistent files, game progress, offline downloads",
-            examples = filesDir.listFiles()?.map { it.name }?.take(5) ?: emptyList()
+            examples = filesFiles.map { it.name }.take(5)
         )
 
-        // Cache-independent persistent files – no_backup, etc
+        // no_backup
         val noBackupDir = File(dataDir, "no_backup")
+        val noBackupFiles = getFilesForSubdir("no_backup")
         categories[DataCategory.CACHE_INDEPENDENT] = CategoryInfo(
             DataCategory.CACHE_INDEPENDENT,
             noBackupDir.absolutePath,
-            fileCount = noBackupDir.walkTopDown().filter { it.isFile }.count(),
-            sizeBytes = noBackupDir.walkTopDown().filter { it.isFile }.map { it.length() }.sum(),
+            fileCount = noBackupFiles.size,
+            sizeBytes = noBackupFiles.sumOf { it.length() },
             accessible = noBackupDir.exists(),
-            description = "no_backup directory – persistent files not included in auto-backup, often contains critical state",
-            examples = noBackupDir.listFiles()?.map { it.name }?.take(3) ?: emptyList()
+            description = "no_backup – persistent files not in auto-backup, often critical state",
+            examples = noBackupFiles.map { it.name }.take(3)
         )
 
-        // WebView data/cookies
+        // WebView
         val webViewDir = File(dataDir, "app_webview")
-        val webViewCookies = File(dataDir, "app_webview/Cookies")
+        val webViewFiles = getFilesForSubdir("app_webview")
         categories[DataCategory.WEBVIEW_DATA] = CategoryInfo(
             DataCategory.WEBVIEW_DATA,
             webViewDir.absolutePath,
-            fileCount = webViewDir.walkTopDown().filter { it.isFile }.count(),
-            sizeBytes = webViewDir.walkTopDown().filter { it.isFile }.map { it.length() }.sum(),
+            fileCount = webViewFiles.size,
+            sizeBytes = webViewFiles.sumOf { it.length() },
             accessible = webViewDir.exists(),
-            description = "WebView data/cookies – may contain session, localStorage, where technically accessible (encrypted cookies may not be restorable)",
-            examples = listOf("Cookies", "Local Storage", "Session Storage").filter { File(webViewDir, it).exists() }
+            description = "WebView data/cookies – may contain session, localStorage, where accessible (encrypted cookies may not restore)",
+            examples = webViewFiles.map { it.name }.take(3)
         )
-        if (webViewCookies.exists()) {
-            warnings.add("WebView Cookies are often encrypted with device key – may not be restorable on different identity")
+        if (webViewFiles.any { it.name == "Cookies" }) {
+            warnings.add("WebView Cookies often encrypted with device key – may not be restorable on different identity")
         }
 
-        // External-storage app directories
+        // External-storage app directories – separate walk, but limited
         val externalDirs = listOf(
             File("/sdcard/Android/data/$packageName"),
-            File("/storage/emulated/0/Android/data/$packageName"),
-            context.getExternalFilesDir(null)?.let { File(it.parentFile?.parentFile?.parentFile, packageName) } // best effort
-        ).filterNotNull().filter { it.exists() }
+            File("/storage/emulated/0/Android/data/$packageName")
+        ).filter { it.exists() }
 
-        val externalSize = externalDirs.sumOf { dir -> dir.walkTopDown().filter { it.isFile }.map { it.length() }.sum() }
-        val externalCount = externalDirs.sumOf { dir -> dir.walkTopDown().filter { it.isFile }.count() }
+        var externalSize = 0L
+        var externalCount = 0
+        var externalExamples = listOf<String>()
+
+        // QA Fix: Only walk external dirs if they exist and are not too large, with size limit to prevent ANR
+        externalDirs.forEach { dir ->
+            try {
+                val files = dir.walkTopDown().filter { it.isFile }.take(1000).toList() // limit to 1000 files for performance
+                externalSize += files.sumOf { it.length() }
+                externalCount += files.size
+                if (externalExamples.isEmpty()) {
+                    externalExamples = files.map { it.name }.take(5)
+                }
+            } catch (e: Exception) {
+                warnings.add("Failed to walk external dir ${dir.absolutePath}: ${e.message}")
+            }
+        }
 
         categories[DataCategory.EXTERNAL_APP_DIRS] = CategoryInfo(
             DataCategory.EXTERNAL_APP_DIRS,
@@ -132,23 +193,36 @@ class DataBundleAnalyzer(private val context: Context) {
             fileCount = externalCount,
             sizeBytes = externalSize,
             accessible = externalDirs.isNotEmpty(),
-            description = "External-storage app directories – offline downloads, media, exports",
-            examples = externalDirs.flatMap { it.listFiles()?.map { f -> f.name } ?: emptyList() }.take(5)
+            description = "External-storage app directories – offline downloads, media",
+            examples = externalExamples
         )
 
         // OBB directories
         val obbDir = File("/sdcard/Android/obb/$packageName")
+        var obbSize = 0L
+        var obbCount = 0
+        var obbExamples = listOf<String>()
+        if (obbDir.exists()) {
+            try {
+                val files = obbDir.walkTopDown().filter { it.isFile }.take(100).toList()
+                obbSize = files.sumOf { it.length() }
+                obbCount = files.size
+                obbExamples = files.map { it.name }.take(3)
+            } catch (e: Exception) {
+                warnings.add("Failed to walk OBB dir: ${e.message}")
+            }
+        }
+
         categories[DataCategory.OBB_DIRS] = CategoryInfo(
             DataCategory.OBB_DIRS,
             obbDir.absolutePath,
-            fileCount = obbDir.listFiles()?.size ?: 0,
-            sizeBytes = obbDir.walkTopDown().filter { it.isFile }.map { it.length() }.sum(),
+            fileCount = obbCount,
+            sizeBytes = obbSize,
             accessible = obbDir.exists(),
             description = "OBB expansion files – game assets",
-            examples = obbDir.listFiles()?.map { it.name }?.take(3) ?: emptyList()
+            examples = obbExamples
         )
 
-        // Custom dirs – initially empty, user will add
         categories[DataCategory.CUSTOM_DIRS] = CategoryInfo(
             DataCategory.CUSTOM_DIRS,
             "user-defined",
@@ -159,10 +233,8 @@ class DataBundleAnalyzer(private val context: Context) {
             examples = emptyList()
         )
 
-        // Warnings for Keystore / hardware-backed
-        warnings.add("Some authentication data may be stored in Android Keystore, hardware-backed security, certificate-bound credentials, or server-side sessions and cannot be copied – login restoration not guaranteed")
+        warnings.add("Some auth data may be stored in Android Keystore, hardware-backed security, certificate-bound credentials, or server-side sessions and cannot be copied – login restoration not guaranteed")
         warnings.add("Never modify original app's data – all reads are read-only")
-        if (!dataDir.canRead()) warnings.add("Data dir not readable without root – only external dirs and accessible files can be bundled")
 
         return AnalysisResult(packageName, categories, totalSize, warnings)
     }
@@ -170,16 +242,39 @@ class DataBundleAnalyzer(private val context: Context) {
     fun getExportablePaths(packageName: String, selectedCategories: List<DataCategory>, customDirs: List<String>): List<File> {
         val analysis = analyze(packageName)
         val paths = mutableListOf<File>()
+
+        // Use analysis.categories to get paths, but validate canonical to prevent path traversal
         selectedCategories.forEach { cat ->
             analysis.categories[cat]?.let { info ->
-                val file = File(info.path)
-                if (file.exists()) paths.add(file)
+                try {
+                    val file = File(info.path)
+                    // Validate file is inside expected data dir or external dir – prevent arbitrary path
+                    if (file.exists() && file.canonicalPath.contains(packageName) || info.category == DataCategory.CUSTOM_DIRS || info.category == DataCategory.EXTERNAL_APP_DIRS || info.category == DataCategory.OBB_DIRS) {
+                        paths.add(file)
+                    } else if (file.exists()) {
+                        android.util.Log.w("CloneMaster", "Skipping exportable path not containing package: ${file.canonicalPath}")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("CloneMaster", "Failed to get exportable path for $cat: ${e.message}")
+                }
             }
         }
+
         customDirs.forEach { dirPath ->
-            val f = File(dirPath)
-            if (f.exists()) paths.add(f)
+            try {
+                val f = File(dirPath)
+                // Validate custom dir – prevent path traversal to sensitive locations
+                val canonical = f.canonicalPath
+                if (canonical.startsWith("/data/data/") || canonical.startsWith("/sdcard/") || canonical.startsWith("/storage/")) {
+                    if (f.exists()) paths.add(f)
+                } else {
+                    android.util.Log.w("CloneMaster", "Skipping custom dir not in allowed roots: $canonical")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("CloneMaster", "Failed to validate custom dir $dirPath: ${e.message}")
+            }
         }
+
         return paths
     }
 }

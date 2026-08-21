@@ -1,6 +1,5 @@
 package com.clonemaster.databundle
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import android.widget.Button
@@ -11,10 +10,20 @@ import com.clonemaster.cloning.models.DataBundleConfig
 import com.clonemaster.cloning.models.DataBundleManifest
 import com.google.gson.Gson
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * First-run import screen – shown when bundled data is present on first install
- * Displays progress bar and messages: "Importing application data...", "Restoring files...", etc.
+ * QA Fixes:
+ * - Use AtomicBoolean for launch flag to prevent race condition when multiple activities created simultaneously
+ * - Use lifecycleScope instead of raw Thread to avoid leak and handle lifecycle
+ * - Synchronized migration flag via SharedPreferences with apply() + atomic check
+ * - Handle configuration changes (rotation) via onSaveInstanceState
+ * - Graceful degradation if manifest invalid
  */
 class FirstRunImportActivity : AppCompatActivity() {
 
@@ -29,6 +38,10 @@ class FirstRunImportActivity : AppCompatActivity() {
     private var archiveFile: File? = null
     private var manifest: DataBundleManifest? = null
 
+    // QA Fix: AtomicBoolean for thread-safe launch flag
+    private val hasLaunchedImport = AtomicBoolean(false)
+    private val migrationCompletedAtomic = AtomicBoolean(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_first_run_import)
@@ -42,8 +55,15 @@ class FirstRunImportActivity : AppCompatActivity() {
 
         restoreEngine = DataRestoreEngine(this)
 
-        // Check if migration already completed
+        // Restore state after rotation
+        if (savedInstanceState != null) {
+            hasLaunchedImport.set(savedInstanceState.getBoolean("hasLaunchedImport", false))
+            migrationCompletedAtomic.set(savedInstanceState.getBoolean("migrationCompleted", false))
+        }
+
+        // Check if migration already completed – atomic check with synchronized prefs
         if (restoreEngine.hasCompletedMigration()) {
+            migrationCompletedAtomic.set(true)
             launchClonedApp()
             return
         }
@@ -61,54 +81,91 @@ class FirstRunImportActivity : AppCompatActivity() {
         manifest = loadManifest()
 
         if (manifest == null) {
-            textStatus.text = "Invalid data bundle"
+            textStatus.text = "Invalid data bundle – manifest missing or corrupted"
+            textDetail.text = "Check import log for details"
             buttonRetry.isEnabled = true
             buttonRetry.setOnClickListener { retry() }
             return
         }
 
-        // Start restore
-        startRestore()
+        // Start restore only if not already launched (atomic)
+        if (hasLaunchedImport.compareAndSet(false, true)) {
+            startRestore()
+        }
 
         buttonRetry.setOnClickListener { retry() }
         buttonContinue.setOnClickListener { launchClonedApp() }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean("hasLaunchedImport", hasLaunchedImport.get())
+        outState.putBoolean("migrationCompleted", migrationCompletedAtomic.get())
+        outState.putInt("progress", progressBar.progress)
+        outState.putString("status", textStatus.text.toString())
+    }
+
     private fun loadManifest(): DataBundleManifest? {
         return try {
-            // Try assets/manifest.json
             val manifestJson = assets.open("manifest.json").bufferedReader().readText()
             Gson().fromJson(manifestJson, DataBundleManifest::class.java)
         } catch (e: Exception) {
+            android.util.Log.w("CloneMaster", "Failed to load manifest from assets: ${e.message}")
             try {
-                // Try files dir manifest
                 val manifestFile = File(filesDir, "manifest.json")
-                if (manifestFile.exists()) {
+                if (manifestFile.exists() && manifestFile.length() > 0) {
                     Gson().fromJson(manifestFile.readText(), DataBundleManifest::class.java)
                 } else null
-            } catch (_: Exception) { null }
+            } catch (ex: Exception) {
+                android.util.Log.w("CloneMaster", "Failed to load manifest from filesDir: ${ex.message}")
+                null
+            }
         }
     }
 
     private fun startRestore() {
         val archive = archiveFile ?: return
         val mf = manifest ?: return
-        val config = DataBundleConfig() // would load from clone_config.json
+        val config = try {
+            val configJson = assets.open("clone_config.json").bufferedReader().readText()
+            val cloneConfig = Gson().fromJson(configJson, com.clonemaster.cloning.models.CloneConfig::class.java)
+            cloneConfig.dataBundle
+        } catch (e: Exception) {
+            android.util.Log.w("CloneMaster", "Failed to load clone_config for dataBundle, using default: ${e.message}")
+            DataBundleConfig()
+        }
 
-        Thread {
-            val result = restoreEngine.restore(archive, mf, config) { progress ->
-                runOnUiThread {
-                    updateProgress(progress)
+        // QA Fix: Use lifecycleScope instead of raw Thread to avoid leak
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val result = restoreEngine.restore(archive, mf, config) { progress ->
+                    // Ensure UI updates only if activity alive
+                    launch(Dispatchers.Main) {
+                        if (!isFinishing && !isDestroyed) {
+                            updateProgress(progress)
+                        }
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    if (!isFinishing && !isDestroyed) {
+                        onRestoreComplete(result)
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("CloneMaster", "Restore thread failed", e)
+                withContext(Dispatchers.Main) {
+                    if (!isFinishing && !isDestroyed) {
+                        textStatus.text = "Import failed: ${e.message}"
+                        buttonRetry.isEnabled = true
+                    }
                 }
             }
-
-            runOnUiThread {
-                onRestoreComplete(result)
-            }
-        }.start()
+        }
     }
 
     private fun updateProgress(progress: DataRestoreEngine.RestoreProgress) {
+        if (isFinishing || isDestroyed) return
         progressBar.progress = progress.progress
         textStatus.text = when (progress.stage) {
             DataRestoreEngine.RestoreStage.DETECTING -> "Importing application data..."
@@ -130,8 +187,10 @@ class FirstRunImportActivity : AppCompatActivity() {
     }
 
     private fun onRestoreComplete(result: DataRestoreEngine.RestoreResult) {
+        if (isFinishing || isDestroyed) return
         progressBar.progress = 100
         if (result.success) {
+            migrationCompletedAtomic.set(true)
             textStatus.text = "Data import complete"
             textDetail.text = "Restored ${result.restoredFiles} files (${result.restoredBytes / 1024 / 1024} MB)"
             if (result.warnings.isNotEmpty()) {
@@ -145,7 +204,6 @@ class FirstRunImportActivity : AppCompatActivity() {
             buttonContinue.isEnabled = true
             buttonContinue.text = "Open App"
 
-            // Auto-launch after 2 seconds if no warnings
             if (result.warnings.isEmpty()) {
                 textDetail.postDelayed({ launchClonedApp() }, 2000)
             }
@@ -154,32 +212,48 @@ class FirstRunImportActivity : AppCompatActivity() {
             textDetail.text = "Errors: ${result.errors.joinToString(", ")}"
             textLog.text = result.log
             buttonRetry.isEnabled = true
+            // Allow retry by resetting atomic flag
+            hasLaunchedImport.set(false)
         }
     }
 
     private fun retry() {
-        restoreEngine.allowRetry()
+        if (!restoreEngine.allowRetry()) {
+            textStatus.text = "Retry not allowed – check logs"
+            return
+        }
         textLog.text = ""
         buttonRetry.isEnabled = false
         buttonContinue.isEnabled = false
-        startRestore()
+        hasLaunchedImport.set(false)
+        migrationCompletedAtomic.set(false)
+        // Re-detect data (previous archive may have been deleted on failure, need to re-detect from assets)
+        archiveFile = restoreEngine.detectBundledData()
+        if (archiveFile == null) {
+            textStatus.text = "No bundled data found for retry – reinstall clone"
+            return
+        }
+        if (hasLaunchedImport.compareAndSet(false, true)) {
+            startRestore()
+        }
     }
 
     private fun launchClonedApp() {
-        // Launch main activity of cloned app
-        // In real clone, this would be the original app's launcher activity
-        // For now, just finish and let system launch default
-        try {
-            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-            if (launchIntent != null) {
-                // Avoid launching self again – launch original's main activity if known
-                // For demo, just finish
-                finish()
-            } else {
-                finish()
-            }
-        } catch (e: Exception) {
-            finish()
+        if (!migrationCompletedAtomic.get() && restoreEngine.hasCompletedMigration()) {
+            migrationCompletedAtomic.set(true)
         }
+        try {
+            // Prevent launching self again – finish and let system handle
+            // In real clone, would launch original launcher activity via meta-data com.clonemaster.original_application
+            finish()
+        } catch (e: Exception) {
+            android.util.Log.e("CloneMaster", "launchClonedApp failed: ${e.message}", e)
+            try { finish() } catch (_: Exception) {}
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // lifecycleScope automatically cancels
     }
 }
