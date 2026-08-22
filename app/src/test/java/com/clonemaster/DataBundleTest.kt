@@ -9,24 +9,32 @@ import java.io.File
  */
 class DataBundleTest {
 
+    /**
+     * Zip-slip regression test mirroring DataRestoreEngine.extractArchiveSecure:
+     * entry names are normalized (unified separators, leading '/' dropped) and then
+     * resolved against the extraction root. `..` traversal and absolute-system
+     * lookalikes must be detected/skipped; no entry may escape the dest root.
+     */
     @Test
     fun testPathTraversalProtection() {
-        val destDir = File("/tmp/clone_test_dest").apply { mkdirs() }
+        val destDir = File(createTempDir(), "clone_test_dest").apply { mkdirs() }
         val destCanonical = destDir.canonicalPath
 
-        val maliciousEntries = listOf(
-            "../../etc/passwd",
-            "/etc/passwd",
-            "data/../../etc/passwd",
-            "..\\windows\\system32"
-        )
-
-        maliciousEntries.forEach { entryName ->
-            val outFile = File(destDir, entryName)
-            val outCanonical = outFile.canonicalPath
-            val isOutside = !outCanonical.startsWith(destCanonical)
-            assertTrue("Entry $entryName should be detected as outside dest", isOutside || entryName.contains(".."))
+        fun suspect(rawName: String): Boolean {
+            val name = rawName.replace("\\", "/").trimStart('/')
+            val outCanonical = File(destDir, name).canonicalPath
+            val outside = !outCanonical.startsWith(destCanonical)
+            return outside || name.contains("..")
         }
+
+        // Traversal entries MUST be detected (outside dest or contains "..")
+        assertTrue("$ {../../etc/passwd}", suspect("../../etc/passwd"))
+        assertTrue("$ {data/../../etc/passwd}", suspect("data/../../etc/passwd"))
+        assertTrue("$ {..\\windows\\system32}", suspect("..\\windows\\system32"))
+        // Leading '/' entries are normalized to the dest root – they must NOT escape
+        assertFalse(suspect("/etc/passwd"))
+        // Normal relative entries inside dest are fine
+        assertFalse(suspect("data/archive.zip"))
 
         destDir.deleteRecursively()
     }

@@ -11,7 +11,8 @@ import java.io.File
 class NativeLibHandler {
 
     companion object {
-        private const val REFERENCE_ASSETS_PATH = "/home/user/Next-Cloner-ref/decompiled/apktool"
+        // NOTE: hook native libraries are NOT bundled (no external assets, no local paths).
+        // See "injection" comment below – we preserve the original libs and report honestly.
         private val HOOK_LIBS = listOf(
             "libappcloner.so" to "libAppCloner.zip",
             "libPine.so" to "libPine.zip",
@@ -35,9 +36,7 @@ class NativeLibHandler {
 
         diagnostics.log("Found ABIs: ${abis.map { it.name }} – preserving all")
 
-        // Try to locate reference hook libs from Next-Cloner-ref if available (for independent implementation reference)
-        val referenceLibDir = File(REFERENCE_ASSETS_PATH, "lib")
-        val hasReference = referenceLibDir.exists()
+        val hasReference = false // no external reference assets are bundled (security rule: no local paths)
 
         abis.forEach { abiDir ->
             val abiName = abiDir.name
@@ -57,27 +56,11 @@ class NativeLibHandler {
                 if (!targetSo.exists()) {
                     var injected = false
 
-                    // Try reference assets if available
+                    // Hook native libs are not bundled in this build. Injecting a placeholder
+                    // .so would break the clone with UnsatisfiedLinkError, so we skip and
+                    // report honestly (degraded feature functionality, no crash).
                     if (hasReference) {
-                        try {
-                            val refAbiDir = File(referenceLibDir, abiName)
-                            val refSo = File(refAbiDir, soName)
-                            if (refSo.exists() && refSo.length() > 1024) {
-                                refSo.copyTo(targetSo, overwrite = true)
-                                diagnostics.log("Injected $soName for $abiName from reference assets (${refSo.length()} bytes) – functional parity, independent packaging")
-                                injected = true
-                            } else {
-                                // Try zip in assets
-                                val assetsZip = File("$REFERENCE_ASSETS_PATH/assets/$zipName")
-                                if (assetsZip.exists()) {
-                                    diagnostics.log("Found $zipName in reference assets – would extract $soName for $abiName (IMPLEMENTED BUT NOT RUNTIME VERIFIED without extraction logic)")
-                                    // In full implementation, unzip and extract appropriate ABI
-                                    // For QA hardening, we document as not injected to avoid empty file crash
-                                }
-                            }
-                        } catch (e: Exception) {
-                            diagnostics.warn("Failed to copy $soName for $abiName from reference: ${e.message}")
-                        }
+                        diagnostics.warn("Hook lib $soName source not available for $abiName – skipped (no local paths, no external assets)")
                     }
 
                     if (!injected) {

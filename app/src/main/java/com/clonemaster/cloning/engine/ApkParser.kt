@@ -103,20 +103,21 @@ class ApkParser(private val context: Context) {
         if (!apkFile.exists()) throw IllegalArgumentException("APK file does not exist: ${apkFile.absolutePath}")
         if (apkFile.length() == 0L) throw IllegalArgumentException("APK file is 0 bytes: ${apkFile.absolutePath}")
 
-        // For file-based parsing without install, use apk-parser lib if available, else minimal info
+        // Real APK-file parsing with net.dongliu:apk-parser (JVM lib, works on Android).
         return try {
-            // Try using net.dongliu:apk-parser if available – independent implementation
-            // This is placeholder for actual parsing, but we provide minimal info with validation
-            AppInfo(
-                packageName = "unknown",
-                appName = apkFile.nameWithoutExtension,
-                versionName = "1.0",
-                versionCode = 1,
-                targetSdk = 30,
-                minSdk = 21,
-                apkPath = apkFile.absolutePath,
-                sizeBytes = apkFile.length()
-            )
+            net.dongliu.apk.parser.ApkFile(apkFile).use { apk ->
+                val meta = apk.apkMeta
+                AppInfo(
+                    packageName = meta.packageName ?: "unknown",
+                    appName = try { meta.label?.toString() ?: apkFile.nameWithoutExtension } catch (ignored: Exception) { apkFile.nameWithoutExtension },
+                    versionName = meta.versionName ?: "1.0",
+                    versionCode = (meta.versionCode ?: 1L),
+                    targetSdk = meta.targetSdkVersion?.toIntOrNull() ?: 30,
+                    minSdk = meta.minSdkVersion?.toIntOrNull() ?: 21,
+                    apkPath = apkFile.absolutePath,
+                    sizeBytes = apkFile.length()
+                )
+            }
         } catch (e: Exception) {
             android.util.Log.w("CloneMaster", "parseApkFile failed for ${apkFile.name}: ${e.message}")
             AppInfo(

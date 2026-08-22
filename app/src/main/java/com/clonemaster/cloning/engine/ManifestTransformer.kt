@@ -102,26 +102,24 @@ class ManifestTransformer {
             warnings.add("No provider authorities found – app may not use ContentProviders, or authorities are in binary XML not decoded")
         }
 
-        // Application class handling – wrap original with HookApplication
-        // Find original application class
-        val appClassRegex = Regex("""<application[^>]*android:name="([^"]+)"""")
-        val originalAppClass = appClassRegex.find(content)?.groupValues?.get(1)
+        // Application class handling – wrap original with HookApplication ONLY when
+        // optional features are enabled (defaults rule: clean clone = no hooks).
+        if (com.clonemaster.cloning.engine.OptionalFeatures.anyEnabled(config)) {
+            val appClassRegex = Regex("""<application[^>]*android:name="([^"]+)"""")
+            val originalAppClass = appClassRegex.find(content)?.groupValues?.get(1)
 
-        if (originalAppClass != null) {
-            // We will keep original class and make HookApplication delegate to it
-            // For manifest, we need to replace android:name with HookApplication, but preserve original via meta-data
-            val hookAppMeta = """<meta-data android:name="com.clonemaster.original_application" android:value="$originalAppClass" />"""
-            if (!content.contains("com.clonemaster.original_application")) {
-                content = content.replace("</application>", "    $hookAppMeta\n    </application>")
-            }
-            // Replace application name with HookApplication – but only if not already HookApplication
-            if (!originalAppClass.contains("clonemaster")) {
-                content = content.replace(Regex("""android:name="$originalAppClass""""), """android:name="com.clonemaster.hooks.HookApplication"""")
-            }
-        } else {
-            // No custom Application, use HookApplication directly
-            if (!content.contains("com.clonemaster.hooks.HookApplication")) {
-                content = content.replace("<application", """<application android:name="com.clonemaster.hooks.HookApplication"""")
+            if (originalAppClass != null) {
+                val hookAppMeta = """<meta-data android:name="com.clonemaster.original_application" android:value="$originalAppClass" />"""
+                if (!content.contains("com.clonemaster.original_application")) {
+                    content = content.replace("</application>", "    $hookAppMeta\n    </application>")
+                }
+                if (!originalAppClass.contains("clonemaster")) {
+                    content = content.replace(Regex("""android:name="$originalAppClass""""), """android:name="com.clonemaster.hooks.HookApplication"""")
+                }
+            } else {
+                if (!content.contains("com.clonemaster.hooks.HookApplication")) {
+                    content = content.replace("<application", """<application android:name="com.clonemaster.hooks.HookApplication"""")
+                }
             }
         }
 
@@ -141,10 +139,12 @@ class ManifestTransformer {
                 """<activity$1 android:exported="true">$2""")
         }
 
-        // Inject clone config meta-data – for HookFramework to read
-        val configMeta = """<meta-data android:name="com.clonemaster.clone_config" android:value="assets/clone_config.json" />"""
-        if (!content.contains("com.clonemaster.clone_config")) {
-            content = content.replace("</application>", "    $configMeta\n    </application>")
+        // Inject clone config meta-data only when hooks run (optional-feature clones)
+        if (com.clonemaster.cloning.engine.OptionalFeatures.anyEnabled(config)) {
+            val configMeta = """<meta-data android:name="com.clonemaster.clone_config" android:value="assets/clone_config.json" />"""
+            if (!content.contains("com.clonemaster.clone_config")) {
+                content = content.replace("</application>", "    $configMeta\n    </application>")
+            }
         }
 
         // Handle launch icon removal if requested

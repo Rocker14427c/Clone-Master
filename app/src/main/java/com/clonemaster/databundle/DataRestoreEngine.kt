@@ -292,15 +292,21 @@ class DataRestoreEngine(private val context: Context) {
                 zip.entries().asSequence().forEach { entry ->
                     if (entry.isDirectory) return@forEach
 
+                    // Normalize: unify separators and drop leading '/'.
+                    // (File(parent, "\/etc/passwd") would otherwise resolve INSIDE the dest,
+                    // silently changing the entry's meaning; normalization makes absolute
+                    // entries behave like relative ones relative to the extraction root.)
+                    val entryName = entry.name.replace('\\', '/').trimStart('/')
+
                     // Zip Slip protection
-                    val outFile = File(dest, entry.name)
+                    val outFile = File(dest, entryName)
                     val outCanonical = outFile.canonicalPath
                     if (!outCanonical.startsWith(destCanonical)) {
                         throw SecurityException("Zip Slip detected: entry ${entry.name} outside dest $destCanonical")
                     }
 
                     // Skip suspicious entries
-                    if (entry.name.contains("..") || entry.size > 100L * 1024 * 1024) {
+                    if (entryName.contains("..") || entry.size > 100L * 1024 * 1024) {
                         android.util.Log.w("CloneMaster", "Skipping suspicious entry: ${entry.name} size=${entry.size}")
                         return@forEach
                     }

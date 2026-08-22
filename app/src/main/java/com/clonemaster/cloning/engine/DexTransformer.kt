@@ -132,8 +132,13 @@ class DexTransformer {
             diagnostics.warn("High number of hard-coded package references ($hardCodedDetections) – app likely has package-name integrity checks, compatibility report should show WARNING for hardcoded_pkg")
         }
 
-        // Inject hook framework dex (secondary dex) – improved with proper Application wrapping
-        injectHookFramework(smaliRoot, config, diagnostics)
+        // Inject hook framework ONLY when optional features are enabled
+        // (defaults rule: clean clone must not inject optional hooks).
+        if (com.clonemaster.cloning.engine.OptionalFeatures.anyEnabled(config)) {
+            injectHookFramework(smaliRoot, config, diagnostics)
+        } else {
+            diagnostics.log("Optional features disabled – hook framework not injected (clean clone)")
+        }
     }
 
     private fun injectHookFramework(smaliRoot: File, config: CloneConfig, diagnostics: CloningDiagnostics) {

@@ -55,17 +55,19 @@ class CloneEngine(private val context: Context) {
             if (!apkPath.exists()) throw IllegalStateException("APK not found: ${config.originalPackage}")
 
             val apktool = findApktool()
-            if (apktool != null) {
+            if (apktool == null) {
+                // apktool is a JVM tool and CANNOT run on Android; the previous
+                // "unzip fallback" produced install-invalid APKs (binary manifest
+                // corrupt, DEX unpatched, unsigned). Use the native pipeline that
+                // builds a valid, v2-signed clone without any external tools.
+                return@withContext cloneNative(config, onProgress, apkPath)
+            } else {
                 val proc = ProcessBuilder(apktool, "d", "-f", apkPath.absolutePath, "-o", decodedDir.absolutePath)
                     .redirectErrorStream(true).start()
                 val out = proc.inputStream.bufferedReader().readText()
                 proc.waitFor()
                 diagnostics.log("apktool decode: $out")
                 if (!decodedDir.exists()) throw IllegalStateException("apktool decode failed: $out")
-            } else {
-                // Fallback: unzip
-                diagnostics.warn("apktool not found, using unzip fallback")
-                unzipApk(apkPath, decodedDir)
             }
 
             // Step 2: Manifest transform – independent implementation, functional parity with public feature reference
@@ -121,8 +123,12 @@ class CloneEngine(private val context: Context) {
             File(assetsDir, "clone_identity.json").writeText(gsonIdentity(config))
             File(assetsDir, "environment_config.json").writeText(gsonEnvironment(config))
 
-            // Bundle coherent physical device profile
-            try {
+            // Bundle coherent physical device profile – ONLY when environment
+            // spoofing features are actually enabled (defaults are OFF).
+            if (config.environment.hideRoot || config.environment.hideEmulator ||
+                config.environment.spoofPhysicalDeviceProfile || config.environment.hideDeveloperOptions ||
+                config.environment.hideUsbAdb || config.environment.hideMockLocation
+            ) try {
                 val envManager = com.clonemaster.environment.EnvironmentManager(context)
                 val profile = envManager.getDeviceProfile(config.environment.physicalDeviceProfileId)
                 val hooksConfig = envManager.generateHooksConfig(config.environment)
@@ -316,18 +322,66 @@ class CloneEngine(private val context: Context) {
         }
     }
 
+    /**
+     * Native on-device clone build: AXML manifest transform -> DEX string patch
+     * -> aligned repack -> v2 sign -> structural validation. No apktool, no
+     * JVM tools, no external binaries. Never presents a build as successful
+     * without passing post-build validation.
+     */
+    private suspend fun cloneNative(config: CloneConfig, onProgress: (String) -> Unit, apkPath: File): Result<File> = withContext(Dispatchers.IO) {
+        try {
+            onProgress("Native clone build (no apktool on device)...")
+            val apkBytes = apkPath.readBytes()
+            if (apkBytes.isEmpty()) throw IllegalStateException("Source APK is empty: ${apkPath.absolutePath}")
+
+            if (OptionalFeatures.anyEnabled(config)) {
+                diagnostics.warn("Optional features are enabled, but the native pipeline currently applies clean-clone mechanics only (feature injection is a later phase – reported honestly, not hidden)")
+            }
+
+            val request = com.clonemaster.core.cloner.CloneRequest(
+                originalPackage = config.originalPackage,
+                clonePackage = config.clonePackage,
+                authorityMap = emptyMap(), // auto-planned deterministically by the builder
+                extraAssets = mapOf("clone_config.json" to gsonConfig(config).toByteArray(Charsets.UTF_8))
+            )
+            onProgress("Transforming manifest & DEX...")
+            val product = com.clonemaster.core.cloner.AppCloneBuilder().build(apkBytes, request)
+            product.diag.logs.forEach { diagnostics.log("native: $it") }
+            product.diag.warnings.forEach { diagnostics.warn("native: $it") }
+            product.diag.errors.forEach { diagnostics.error("native: $it") }
+            if (product.diag.hasErrors) throw IllegalStateException("Native clone failed validation: ${product.diag.errors.joinToString(" | ")}")
+
+            onProgress("Writing output APK...")
+            val outputDir = File(context.getExternalFilesDir(null), "clones")
+            outputDir.mkdirs()
+            val finalApk = File(outputDir, "${config.clonePackage}_${config.versionName}.apk")
+            finalApk.writeBytes(product.apk)
+            diagnostics.log("Native clone complete: ${finalApk.absolutePath} (${finalApk.length()} bytes, v2-signed, validated)")
+            saveCloneConfig(config)
+            onProgress("Clone complete: ${finalApk.absolutePath}")
+            Result.success(finalApk)
+        } catch (e: Exception) {
+            diagnostics.error("Native clone failed: ${e.message}")
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
     private fun getApkPath(packageName: String): File {
         val pm = context.packageManager
         return File(pm.getApplicationInfo(packageName, 0).sourceDir)
     }
 
     private fun findApktool(): String? {
-        return try {
-            val proc = ProcessBuilder("which", "apktool").start()
-            proc.waitFor()
-            val path = proc.inputStream.bufferedReader().readText().trim()
-            if (path.isNotEmpty()) path else null
-        } catch (ignored: Exception) { null }
+        // Explicit override first (desktop/dev environments)
+        System.getenv("APKTOOL")?.let { if (File(it).exists()) return it }
+        // PATH scan – no `which` dependency (Android toybox may not have it)
+        val pathEnv = System.getenv("PATH") ?: ""
+        pathEnv.split(File.pathSeparator).forEach { dir ->
+            val candidate = File(dir, "apktool")
+            if (candidate.exists() && candidate.canExecute()) return candidate.absolutePath
+        }
+        return null
     }
 
     private fun unzipApk(apk: File, outDir: File) {
