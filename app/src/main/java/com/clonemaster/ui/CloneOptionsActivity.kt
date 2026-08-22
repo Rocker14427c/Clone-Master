@@ -716,9 +716,11 @@ class CloneOptionsActivity : AppCompatActivity() {
     }
 
     private fun buildCompactSummaryForBuild(): String {
-        val enabledOptions = configValues.filter { it.value is Boolean && it.value as Boolean }.keys
+        val enabledOptions = OptionState.enabledOptions(config)
         val warnings = mutableListOf<String>()
-        if (config.identity.imei.isNotEmpty()) warnings.add("IMEI spoofing BLOCKED BY ANDROID LIMITATION on Android 10+")
+        // Warning must be gated on the ENABLE flag, not on a value merely existing
+        // (a random IMEI value is present by default with spoofing OFF).
+        if (config.identity.spoofImei) warnings.add("IMEI spoofing BLOCKED BY ANDROID LIMITATION on Android 10+")
         if (config.privacy.disabledPermissions.isNotEmpty()) warnings.add("Stripping permissions may break app")
         if (config.environment.hideRoot) warnings.add("Root hiding may be bypassed by direct syscalls")
         if (config.dataBundle.enabled) warnings.add("Data bundle increases size by ~${config.dataBundle.maxBundleSizeMb}MB")
@@ -728,7 +730,7 @@ class CloneOptionsActivity : AppCompatActivity() {
 
             Clone: ${config.appName}
             Package: ${config.clonePackage}
-            Profile: ${config.environment.physicalDeviceProfileId}
+            Profile: ${config.environment.physicalDeviceProfileId}${if (config.environment.spoofPhysicalDeviceProfile) " (SPOOFED)" else " (showing default – spoofing OFF)"}
 
             Enabled: ${enabledOptions.size}/${allOptions.size} options
             Data Bundle: ${if (config.dataBundle.enabled) "Enabled" else "Disabled"}
@@ -743,9 +745,9 @@ class CloneOptionsActivity : AppCompatActivity() {
     }
 
     private fun buildDetailedSummary(): String {
-        val enabledOptions = configValues.filter { it.value is Boolean && it.value as Boolean }.keys
+        val enabledOptions = OptionState.enabledOptions(config)
         val warnings = mutableListOf<String>()
-        if (config.identity.imei.isNotEmpty()) warnings.add("IMEI spoofing BLOCKED BY ANDROID LIMITATION")
+        if (config.identity.spoofImei) warnings.add("IMEI spoofing BLOCKED BY ANDROID LIMITATION")
         if (config.privacy.disabledPermissions.isNotEmpty()) warnings.add("Stripping permissions: ${config.privacy.disabledPermissions.joinToString()}")
         if (config.environment.hideRoot) warnings.add("Root hiding may be bypassed")
         if (config.dataBundle.enabled) warnings.add("Data bundle size ~${config.dataBundle.maxBundleSizeMb}MB")
@@ -765,8 +767,10 @@ class CloneOptionsActivity : AppCompatActivity() {
             Device Profile: ${config.environment.physicalDeviceProfileId} (${deviceProfileManager.loadProfile(config.environment.physicalDeviceProfileId)?.displayName ?: "Unknown"})
             Fingerprint: ${deviceProfileManager.loadProfile(config.environment.physicalDeviceProfileId)?.fingerprint ?: ""}
 
-            Enabled Options (${enabledOptions.size}):
-            ${enabledOptions.joinToString("\n") { "- $it" }}
+            Enabled Options (${enabledOptions.size}) – counted from the saved config:
+            ${enabledOptions.joinToString("\n") { "- ${it.optionName} [${it.fieldPath}]" }}
+            (Value-only fields such as Android ID/IMEI/profile are NOT active unless their
+            enable flag is set; defaults are intentionally OFF.)
 
             Data Bundle: ${if (config.dataBundle.enabled) "Enabled – Categories ${config.dataBundle.selectedCategories.joinToString()} – Compression ${config.dataBundle.compression} – Encryption ${config.dataBundle.encryption} – Embed ${config.dataBundle.embedInApk}" else "Disabled"}
 
@@ -793,10 +797,10 @@ class CloneOptionsActivity : AppCompatActivity() {
     }
 
     private fun updateCompactSummary() {
-        val enabledCount = configValues.filter { it.value is Boolean && it.value as Boolean }.size
+        val enabledCount = OptionState.enabledCount(config)
         val totalCount = allOptions.size
         val warnings = mutableListOf<String>().apply {
-            if (config.identity.imei.isNotEmpty()) add("IMEI BLOCKED")
+            if (config.identity.spoofImei) add("IMEI BLOCKED")
             if (config.privacy.disabledPermissions.isNotEmpty()) add("Permissions")
             if (config.dataBundle.enabled) add("Data Bundle")
         }

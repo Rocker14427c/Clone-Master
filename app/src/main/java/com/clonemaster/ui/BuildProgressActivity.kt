@@ -201,7 +201,33 @@ class BuildProgressActivity : AppCompatActivity() {
                     }
                 }
             }
-            registerReceiver(installReceiver, IntentFilter("com.clonemaster.INSTALL_RESULT"))
+
+            // CRASH FIX (device: SecurityException "One of RECEIVER_EXPORTED or
+            // RECEIVER_NOT_EXPORTED should be specified ..." on Android 14+):
+            // This receiver ONLY handles our own internal install-result broadcast
+            // ("com.clonemaster.INSTALL_RESULT"), stemmed from a PendingIntent that
+            // THIS app created for PackageInstaller.session.commit(). It must never
+            // receive broadcasts from other apps, and does not need to be visible to
+            // them -> RECEIVER_NOT_EXPORTED is the correct (and secure) behavior.
+            //
+            // ContextCompat.registerReceiver applies the right call per API level:
+            //   - API 33+ : passes Context.RECEIVER_NOT_EXPORTED to framework
+            //   - API <33 : plain registerReceiver (flags not required there)
+            // so the app keeps working across its whole minSdk 24 .. targetSdk 34
+            // range without deprecated or version-broken patterns.
+            try {
+                androidx.core.content.ContextCompat.registerReceiver(
+                    this,
+                    installReceiver,
+                    IntentFilter("com.clonemaster.INSTALL_RESULT"),
+                    androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+                )
+            } catch (e: Exception) {
+                // Never crash the activity: registration failure only disables
+                // install-result feedback, not the build itself.
+                android.util.Log.e("CloneMaster", "Install receiver registration failed: ${e.message}", e)
+                textDetail.text = "Install-result feedback unavailable (${e.message}); use Export + adb install."
+            }
         }
     }
 
