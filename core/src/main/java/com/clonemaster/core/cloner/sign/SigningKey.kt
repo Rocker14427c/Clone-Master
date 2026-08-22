@@ -62,7 +62,8 @@ object SigningKey {
         val notAfter = Instant.parse("2036-01-01T00:00:00Z")
         val utc = DateTimeFormatter.ofPattern("yyMMddHHmmss'Z'").withZone(ZoneOffset.UTC)
 
-        val serial = ByteArray(20).also { SecureRandom().nextBytes(it) }
+        // Deterministic serial: derived from the public key hash (build reproducibility).
+        val serial = MessageDigest.getInstance("SHA-256").digest(kp.public.encoded).copyOf(20)
         serial[0] = (serial[0].toInt() and 0x7F).toByte()
 
         val sigAlg = derSequence(

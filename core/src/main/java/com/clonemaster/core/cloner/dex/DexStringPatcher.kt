@@ -31,7 +31,9 @@ class DexStringPatcher {
     data class Result(
         val replacements: Int,
         val notFitted: List<String>,
-        val skippedInvalidUtf8: Int
+        val skippedInvalidUtf8: Int,
+        /** Number of string_ids whose sort order (UTF-16) is violated after patching. */
+        val orderViolations: Int = 0
     )
 
     fun patch(dex: ByteArray, request: CloneRequest, diag: CloneDiag): Result {
@@ -98,7 +100,31 @@ class DexStringPatcher {
         }
 
         fixChecksums(dex)
-        return Result(patched, notFitted, skippedUtf8)
+        val violations = countOrderViolations(dex, stringIdsSize, stringIdsOff)
+        if (violations > 0) {
+            diag.warn("DEX string table sort order violated for $violations entries after in-place patch (ART tolerates this in practice; reported honestly)")
+        }
+        return Result(patched, notFitted, skippedUtf8, violations)
+    }
+
+    /**
+     * Counts string_ids whose strings are no longer in ascending UTF-16 order
+     * (the DEX spec requirement). In-place patching can break this; ART does
+     * not enforce it at load time, but we report it rather than hide it.
+     */
+    private fun countOrderViolations(dex: ByteArray, stringIdsSize: Int, stringIdsOff: Int): Int {
+        var previous: String? = null
+        var violations = 0
+        for (i in 0 until stringIdsSize) {
+            val itemOff = leU32(dex, stringIdsOff + i * 4)
+            if (itemOff < 0 || itemOff + 1 > dex.size) return violations
+            val (utf16Size, prefixLen) = readUlebWithLen(dex, itemOff)
+            val text = readMutf8(dex, itemOff + prefixLen, utf16Size)?.first ?: continue
+            val prev = previous
+            if (prev != null && text < prev) violations++
+            previous = text
+        }
+        return violations
     }
 
     private fun fixChecksums(dex: ByteArray) {

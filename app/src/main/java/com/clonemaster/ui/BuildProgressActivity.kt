@@ -1,10 +1,19 @@
 package com.clonemaster.ui
 
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageInstaller
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.clonemaster.R
@@ -63,19 +72,7 @@ class BuildProgressActivity : AppCompatActivity() {
         buttonExport.isEnabled = false
 
         buttonInstall.setOnClickListener {
-            resultApk?.let { apk ->
-                try {
-                    val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(androidx.core.content.FileProvider.getUriForFile(this@BuildProgressActivity, "${packageName}.fileprovider", apk), "application/vnd.android.package-archive")
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    startActivity(installIntent)
-                } catch (ignored: Exception) {
-                    android.util.Log.e("CloneMaster", "Install failed: ${ignored.message}", ignored)
-                    textDetail.text = "Install failed: ${ignored.message} – grant REQUEST_INSTALL_PACKAGES permission"
-                }
-            }
+            resultApk?.let { apk -> installApk(apk) }
         }
 
         buttonExport.setOnClickListener {
@@ -112,7 +109,8 @@ class BuildProgressActivity : AppCompatActivity() {
                     if (!isFinishing && !isDestroyed) {
                         if (result.isSuccess) {
                             resultApk = result.getOrNull()
-                            updateProgress(BuildStage.COMPLETE, "Build complete: ${resultApk?.absolutePath}")
+                            // Honest wording: build+validation verified; INSTALLATION not verified yet
+                            updateProgress(BuildStage.COMPLETE, "Build complete & validated (ZIP/manifest/DEX/alignment/CRC/signature checks passed). Installation not yet verified – tap Install.")
                             buttonInstall.isEnabled = true
                             buttonExport.isEnabled = true
                             textLog.append("\nDiagnostics:\n${cloneEngine.getDiagnostics().getReport()}")
@@ -175,5 +173,115 @@ class BuildProgressActivity : AppCompatActivity() {
         textStage.text = stage.displayName
         textDetail.text = detail
         textLog.append("$detail\n")
+    }
+
+    // ---------------------------------------------------------------- install
+
+    private var installReceiver: BroadcastReceiver? = null
+
+    override fun onResume() {
+        super.onResume()
+        if (installReceiver == null) {
+            installReceiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    val status = intent?.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)
+                    val msg = intent?.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: ""
+                    when (status) {
+                        PackageInstaller.STATUS_SUCCESS -> {
+                            textDetail.text = "Installed successfully (PackageInstaller OK)."
+                            Toast.makeText(this@BuildProgressActivity, "Clone installed ✓", Toast.LENGTH_LONG).show()
+                        }
+                        else -> {
+                            // Surface the REAL Android failure instead of a generic message
+                            val statusText = statusText(status)
+                            textDetail.text = "Install FAILED ($statusText): $msg — the generated APK was rejected by the device."
+                            textLog.append("\n[Install] FAILED ($statusText): $msg\n")
+                            android.util.Log.e("CloneMaster", "PackageInstaller FAILED status=$status msg=$msg")
+                        }
+                    }
+                }
+            }
+            registerReceiver(installReceiver, IntentFilter("com.clonemaster.INSTALL_RESULT"))
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        installReceiver?.let { unregisterReceiver(it) }
+        installReceiver = null
+    }
+
+    private fun statusText(status: Int?): String = when (status) {
+        PackageInstaller.STATUS_FAILURE_ABORTED -> "FAILURE_ABORTED"
+        PackageInstaller.STATUS_FAILURE_BLOCKED -> "FAILURE_BLOCKED"
+        PackageInstaller.STATUS_FAILURE_CONFLICT -> "FAILURE_CONFLICT"
+        PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "FAILURE_INCOMPATIBLE"
+        PackageInstaller.STATUS_FAILURE_INVALID -> "FAILURE_INVALID"
+        PackageInstaller.STATUS_FAILURE_STORAGE -> "FAILURE_STORAGE"
+        else -> "UNKNOWN($status)"
+    }
+
+    /**
+     * Installs the generated (validated) APK via PackageInstaller so the real
+     * Android error is captured and shown. Falls back to the system package
+     * installer (ACTION_VIEW + FileProvider) if the session API is unavailable.
+     */
+    private fun installApk(apk: File) {
+        if (!apk.exists() || apk.length() == 0L) {
+            textDetail.text = "Install failed: APK missing or empty (${apk.absolutePath})"
+            return
+        }
+        // Android 8+: request "install unknown apps" permission first
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            textDetail.text = "Allow 'Install unknown apps' for Clone-Master, then tap Install again."
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (ignored: Exception) {
+                textDetail.text = "Could not open app-install settings: ${ignored.message}"
+            }
+            return
+        }
+        try {
+            val installer = packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+            params.setAppPackageName(config.clonePackage)
+            val sessionId = installer.createSession(params)
+            val session = installer.openSession(sessionId)
+            try {
+                apk.inputStream().use { input ->
+                    session.openWrite("base.apk", 0, apk.length()).use { out -> input.copyTo(out) }
+                }
+            } catch (e: Exception) {
+                try { session.abandon() } catch (ignored: Exception) {}
+                throw e
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                this, 1001,
+                Intent("com.clonemaster.INSTALL_RESULT").setPackage(packageName),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            session.commit(pendingIntent.intentSender)
+            textDetail.text = "Installing ${apk.name}…"
+        } catch (e: Exception) {
+            android.util.Log.e("CloneMaster", "PackageInstaller path failed: ${e.message}", e)
+            // Fallback: system package installer via FileProvider
+            try {
+                val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(
+                        androidx.core.content.FileProvider.getUriForFile(this@BuildProgressActivity, "${packageName}.fileprovider", apk),
+                        "application/vnd.android.package-archive"
+                    )
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(installIntent)
+                textDetail.text = "Opened system package installer (no status feedback available). If it fails, use `adb install` and report the error."
+            } catch (ex: Exception) {
+                textDetail.text = "Install failed: ${ex.message}"
+            }
+        }
     }
 }

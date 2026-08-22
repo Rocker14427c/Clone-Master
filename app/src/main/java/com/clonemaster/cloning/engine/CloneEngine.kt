@@ -345,7 +345,9 @@ class CloneEngine(private val context: Context) {
                 extraAssets = mapOf("clone_config.json" to gsonConfig(config).toByteArray(Charsets.UTF_8))
             )
             onProgress("Transforming manifest & DEX...")
-            val product = com.clonemaster.core.cloner.AppCloneBuilder().build(apkBytes, request)
+            val builder = com.clonemaster.core.cloner.AppCloneBuilder()
+            val material = loadOrCreateSignMaterial()
+            val product = builder.build(apkBytes, request, material)
             product.diag.logs.forEach { diagnostics.log("native: $it") }
             product.diag.warnings.forEach { diagnostics.warn("native: $it") }
             product.diag.errors.forEach { diagnostics.error("native: $it") }
@@ -364,6 +366,34 @@ class CloneEngine(private val context: Context) {
             diagnostics.error("Native clone failed: ${e.message}")
             e.printStackTrace()
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Loads the clone signing identity from private storage, or generates and
+     * persists it on first use. All clones from this installation share one
+     * signer, so re-installs/updates of a clone keep the same signature.
+     * (Stored in app-private storage; not a credential, not committed.)
+     */
+    private fun loadOrCreateSignMaterial(): com.clonemaster.core.cloner.AppCloneBuilder.SignMaterial {
+        val dir = File(context.filesDir, "clone_signing")
+        val keyFile = File(dir, "clone-key.p8")
+        val certFile = File(dir, "clone-cert.der")
+        try {
+            if (keyFile.exists() && certFile.exists()) {
+                return com.clonemaster.core.cloner.AppCloneBuilder.Companion.signMaterialFrom(
+                    keyFile.readBytes(), certFile.readBytes()
+                )
+            }
+            val m = com.clonemaster.core.cloner.AppCloneBuilder.Companion.generateSignMaterial()
+            dir.mkdirs()
+            keyFile.writeBytes(com.clonemaster.core.cloner.AppCloneBuilder.Companion.encodePrivateKey(m))
+            certFile.writeBytes(m.certDer)
+            diagnostics.log("Generated new clone signing identity (persisted in private storage)")
+            return m
+        } catch (e: Exception) {
+            diagnostics.warn("Signing identity persistence failed (${e.message}) – using in-process identity")
+            return com.clonemaster.core.cloner.AppCloneBuilder.Companion.cachedSignMaterial()
         }
     }
 

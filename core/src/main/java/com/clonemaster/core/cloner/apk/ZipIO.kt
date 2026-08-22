@@ -5,16 +5,20 @@ import java.io.ByteArrayOutputStream
 /**
  * Minimal ZIP reader/writer for APK packaging.
  *
- * Reader: locates the end-of-central-directory and central directory records
- * directly, so compressed entry bytes can be copied RAW (source data is
- * preserved byte-for-byte, needed for deterministic output).
+ * Reader: locates EOCD and central directory directly, so compressed entry
+ * bytes can be copied RAW (source data preserved byte-for-byte). The actual
+ * DATA OFFSET of each entry (localHeaderOffset + 30 + nameLen + extraLen) is
+ * captured from the archive at read time, so validators and alignment checks
+ * are computed against the REAL byte positions of the file being inspected.
  *
  * Writer: emits a zipalign-compatible APK:
- *   - STORED entries are aligned (resources.arsc & classes*.dex to 4 bytes,
- *     native .so to 4096 bytes) via extra-field padding;
- *   - DEFLATED entries are copied raw;
- *   - no data descriptors (sizes known up-front);
- *   - no Zip64 (clear error when required).
+ *   - STORED entries aligned via extra-field padding:
+ *       * native libs (entries under lib/) -> 16384 (16 KB page-size devices, Android 15+;
+ *         16 KB alignment is also accepted on 4 KB-page devices),
+ *       * all other STORED entries (resources.arsc, classes*.dex, ...) -> 4
+ *         (zipalign default requirement).
+ *   - DEFLATED entries copied raw (no alignment needed).
+ *   - deterministic timestamps, no data descriptors, no Zip64 (clear error).
  */
 class ZipIO {
 
@@ -25,20 +29,35 @@ class ZipIO {
         val compressedSize: Long,
         val uncompressedSize: Long,
         val localHeaderOffset: Long,
-        val compressedData: ByteArray, // raw bytes from the source APK
-        val isNew: Boolean = false
+        val compressedData: ByteArray,      // raw bytes from the archive
+        /** Byte offset of the entry DATA in the archive this entry was read from. */
+        val dataOffset: Long = -1,
+        val extraLen: Int = 0
     )
-
-    data class Apk(val entries: List<Entry>)
 
     companion object {
         const val STORED = 0
         const val DEFLATED = 8
 
+        /** Alignment for compressed=no native libs: covers 16 KB page devices (Android 15+). */
+        const val ALIGN_SO = 16384
+        /** Alignment for all other stored entries (zipalign default). */
+        const val ALIGN_DEFAULT = 4
+
         fun le16(b: ByteArray, o: Int): Int = (b[o].toInt() and 0xFF) or ((b[o + 1].toInt() and 0xFF) shl 8)
         fun le32(b: ByteArray, o: Int): Int =
             (b[o].toInt() and 0xFF) or ((b[o + 1].toInt() and 0xFF) shl 8) or
                     ((b[o + 2].toInt() and 0xFF) shl 16) or ((b[o + 3].toInt() and 0xFF) shl 24)
+
+        /** Signature files from the ORIGINAL signing that are invalid after content changes. */
+        fun isStaleV1SignatureFile(name: String): Boolean {
+            val upper = name.uppercase()
+            return upper == "META-INF/MANIFEST.MF" ||
+                    upper == "META-INF/INDEX.LIST" ||
+                    upper.startsWith("META-INF/") && upper.substringAfterLast('/').matches(
+                        Regex("[A-Z0-9_-]+\\.(SF|RSA|DSA|EC|SIG)")
+                    )
+        }
 
         fun read(apkBytes: ByteArray): List<Entry> {
             val eocd = findEocd(apkBytes)
@@ -52,6 +71,7 @@ class ZipIO {
             repeat(cdCount) {
                 require(le32(apkBytes, p) == 0x02014b50) { "Bad central directory record at $p" }
                 val method = le16(apkBytes, p + 10)
+                require(method == STORED || method == DEFLATED) { "Unsupported compression method $method" }
                 val crc = le32(apkBytes, p + 16).toLong() and 0xFFFFFFFFL
                 val csize = le32(apkBytes, p + 20).toLong() and 0xFFFFFFFFL
                 val usize = le32(apkBytes, p + 24).toLong() and 0xFFFFFFFFL
@@ -70,7 +90,7 @@ class ZipIO {
                 val dataStart = lho.toInt() + 30 + lNameLen + lExtraLen
                 require(csize <= Int.MAX_VALUE) { "Entry too large: $name" }
                 val raw = apkBytes.copyOfRange(dataStart, dataStart + csize.toInt())
-                entries.add(Entry(name, method, crc, csize, usize, lho, raw))
+                entries.add(Entry(name, method, crc, csize, usize, lho, raw, dataStart.toLong(), lExtraLen))
                 p += 46 + nameLen + extraLen + commentLen
             }
             return entries
@@ -93,15 +113,15 @@ class ZipIO {
     }
 
     /**
-     * Write an APK from `baseEntries` (raw copies) with `replacements` replacing
-     * same-named entries and `additions` added. Returns full unsigned APK bytes.
+     * Write an APK from `baseEntries` (raw copies), with `replacements`
+     * replacing same-named entries and `additions` added.
      */
     fun write(
         baseEntries: List<Entry>,
         replacements: Map<String, ByteArray>,
-        additions: Map<String, ByteArray>,
-        storeNames: Set<String> = emptySet()
+        additions: Map<String, ByteArray>
     ): ByteArray {
+        // Deterministic order: source order, then replacements, then additions.
         val names = LinkedHashSet<String>()
         baseEntries.forEach { names.add(it.name) }
         replacements.keys.forEach { names.add(it) }
@@ -109,7 +129,6 @@ class ZipIO {
 
         val out = ByteArrayOutputStream()
         val cd = ByteArrayOutputStream()
-        data class CdRec(val name: String, val method: Int, val crc: Long, val csize: Long, val usize: Long, val lho: Long, val extra: ByteArray)
 
         for (name in names) {
             val rep = replacements[name]
@@ -142,11 +161,11 @@ class ZipIO {
                 else -> error("entry $name not found in source and not provided")
             }
 
-            // alignment
+            // Alignment for STORED (uncompressed) entries only.
             val align = when {
-                method == STORED && (name.endsWith(".so") || name.startsWith("lib/")) -> 4096
-                method == STORED -> 4096 // resources.arsc / dex: page-friendly, satisfies 4-byte rule
-                else -> 1
+                method != STORED -> 1
+                name.startsWith("lib/") || name.endsWith(".so") -> ALIGN_SO
+                else -> ALIGN_DEFAULT
             }
             val nameBytes = name.toByteArray(Charsets.UTF_8)
             val baseHdrLen = 30 + nameBytes.size
@@ -156,16 +175,15 @@ class ZipIO {
                 val rem = off % align
                 if (rem != 0) extraLen = align - rem
             }
-            // extra field = N zero bytes; accepted by Android's zip parser (no EOCD/CRC effect
-            // since extras are excluded from entry data), same padding trick zipalign uses.
+            // extra field = zeros (valid padding entry 0x0000), same trick zipalign uses
             val extra = ByteArray(extraLen)
             val lho = out.size().toLong()
             val crcInt = crc.toInt()
 
             // local header
             writeLeShort(out, 0x4b50); writeLeShort(out, 0x0403) // local file header sig (LE)
-            writeLeShort(out, 20)        // version
-            writeLeShort(out, 0x0800)    // flags: UTF-8
+            writeLeShort(out, 20)        // version needed
+            writeLeShort(out, 0x0800)    // flags: UTF-8 names
             writeLeShort(out, method)
             writeLeShort(out, 0)         // time
             writeLeShort(out, 0x21)      // date 1980-01-01
@@ -179,11 +197,10 @@ class ZipIO {
             out.write(data)
 
             // central directory record
-            val cdExtra = ByteArray(0)
             writeLeShort(cd, 0x4b50); writeLeShort(cd, 0x0201) // central dir sig (LE)
-            writeLeShort(cd, 20)
-            writeLeShort(cd, 20)
-            writeLeShort(cd, 0x0800)
+            writeLeShort(cd, 20)      // version made by
+            writeLeShort(cd, 20)      // version needed
+            writeLeShort(cd, 0x0800)  // flags
             writeLeShort(cd, method)
             writeLeShort(cd, 0)
             writeLeShort(cd, 0x21)
@@ -191,14 +208,13 @@ class ZipIO {
             writeLeInt(cd, data.size.toInt())
             writeLeInt(cd, usize.toInt())
             writeLeShort(cd, nameBytes.size)
-            writeLeShort(cd, cdExtra.size)
-            writeLeShort(cd, 0) // comment len
-            writeLeShort(cd, 0) // disk number
-            writeLeShort(cd, 0) // internal attrs
-            writeLeInt(cd, 0)   // external attrs
+            writeLeShort(cd, 0)       // extra len
+            writeLeShort(cd, 0)       // comment len
+            writeLeShort(cd, 0)       // disk number
+            writeLeShort(cd, 0)       // internal attrs
+            writeLeInt(cd, 0)         // external attrs
             writeLeInt(cd, lho.toInt())
             cd.write(nameBytes)
-            cd.write(cdExtra)
         }
 
         val cdBytes = cd.toByteArray()
@@ -229,8 +245,6 @@ class ZipIO {
         return c.value
     }
 
-    // ---- byte helpers ----
-    // ---- byte helpers ----
     private fun writeLeShort(o: ByteArrayOutputStream, v: Int) { o.write(v and 0xFF); o.write((v shr 8) and 0xFF) }
     private fun writeLeInt(o: ByteArrayOutputStream, v: Int) {
         o.write(v and 0xFF); o.write((v shr 8) and 0xFF); o.write((v shr 16) and 0xFF); o.write((v shr 24) and 0xFF)

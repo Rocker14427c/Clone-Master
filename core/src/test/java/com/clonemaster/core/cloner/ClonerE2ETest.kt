@@ -127,17 +127,29 @@ class ClonerE2ETest {
     }
 
     /** Builds a tiny APK: manifest + dex + dummy arsc. */
-    private fun buildTestApk(pkg: String, authority: String?, dexStrings: List<String>): ByteArray {
+    private fun buildTestApk(pkg: String, authority: String?, dexStrings: List<String>): ByteArray =
+        buildTestApkCustom(pkg, authority, dexStrings, extraEntries = emptyList())
+
+    /** Builds a test APK with extra raw entries (e.g. libs, META-INF). */
+    private fun buildTestApkCustom(
+        pkg: String,
+        authority: String?,
+        dexStrings: List<String>,
+        extraEntries: List<ZipIO.Entry>
+    ): ByteArray {
         val manifest = buildManifest(pkg, authority)
         val dex = buildDex(*dexStrings.toTypedArray())
         val arsc = ByteArray(64) { 0 }
         val base = mutableListOf<ZipIO.Entry>()
-        val manifestEntry = ZipIO.Entry("AndroidManifest.xml", ZipIO.STORED, crc(manifest), manifest.size.toLong(), manifest.size.toLong(), 0, manifest)
-        val dexEntry = ZipIO.Entry("classes.dex", ZipIO.STORED, crc(dex), dex.size.toLong(), dex.size.toLong(), 0, dex)
-        val arscEntry = ZipIO.Entry("resources.arsc", ZipIO.STORED, crc(arsc), arsc.size.toLong(), arsc.size.toLong(), 0, arsc)
-        base.addAll(listOf(manifestEntry, dexEntry, arscEntry))
+        base.add(ZipIO.Entry("AndroidManifest.xml", ZipIO.STORED, crc(manifest), manifest.size.toLong(), manifest.size.toLong(), 0, manifest))
+        base.add(ZipIO.Entry("classes.dex", ZipIO.STORED, crc(dex), dex.size.toLong(), dex.size.toLong(), 0, dex))
+        base.add(ZipIO.Entry("resources.arsc", ZipIO.STORED, crc(arsc), arsc.size.toLong(), arsc.size.toLong(), 0, arsc))
+        base.addAll(extraEntries)
         return ZipIO().write(base, emptyMap(), emptyMap())
     }
+
+    private fun storedEntry(name: String, data: ByteArray): ZipIO.Entry =
+        ZipIO.Entry(name, ZipIO.STORED, crc(data), data.size.toLong(), data.size.toLong(), 0, data)
 
     private fun crc(data: ByteArray): Long = java.util.zip.CRC32().apply { update(data) }.value
 
@@ -233,6 +245,98 @@ class ClonerE2ETest {
         val v = V2Scheme.verify(product.apk)
         assertTrue("v2 verification failed: ${v.message}", v.verified)
         // v2 (API 24+) only – acceptable for Clone-Master minSdk 24
+    }
+
+    @Test
+    fun `alignment validated against real data offsets - regression for user FAIL row`() {
+        // Regression for the device report "[FAIL] resources.arsc aligned to 4":
+        // the OLD check computed (localHeaderOffset + 30 + nameLen) and omitted the
+        // extra-field padding, so it FAILED whenever padding % 4 != 0 even though
+        // the real data offset was correctly aligned. Construct exactly that case:
+        // first entry stored with 3-byte data makes the arsc padding ≡ 3 (mod 4).
+        var d3 = 3
+        val oddData = byteArrayOf(1, 2, 3)
+        val src = buildTestApkCustom(
+            "com.example.test", "com.example.test.provider", listOf("com.example.test.provider"),
+            extraEntries = listOf(storedEntry("odd.bin", oddData))
+        )
+        val req = CloneRequest(
+            originalPackage = "com.example.test",
+            clonePackage = "com.example.test.clone1",
+            authorityMap = mapOf("com.example.test.provider" to "cm.a1b2c3d4.provider")
+        )
+        val product = AppCloneBuilder().build(src, req)
+        assertFalse("build must not report errors: ${product.diag.errors}", product.diag.hasErrors)
+
+        // The REAL data offset in the output must be 4-byte aligned (and validator agrees)
+        val outEntries = ZipIO.read(product.apk)
+        val arsc = outEntries.first { it.name == "resources.arsc" }
+        assertEquals("resources.arsc data offset must be 4-aligned", 0L, arsc.dataOffset % 4)
+
+        val report = ApkValidator().validate(product.apk, req)
+        assertTrue("validator must pass: ${report.errors}", report.ok)
+        val alignCheck = report.checks.first { it.first.startsWith("resources.arsc aligned") }
+        assertTrue(alignCheck.second)
+    }
+
+    @Test
+    fun `stored native libs are 16KB aligned and stale v1 signatures are dropped`() {
+        val libData = ByteArray(2048) { it.toByte() }
+        val stale = "META-INF/CERT.RSA".toByteArray()
+        val src = buildTestApkCustom(
+            "com.example.test", "com.example.test.provider", listOf("com.example.test.provider"),
+            extraEntries = listOf(
+                storedEntry("lib/arm64-v8a/libtest.so", libData),
+                storedEntry("META-INF/CERT.RSA", stale),
+                storedEntry("META-INF/MANIFEST.MF", stale)
+            )
+        )
+        val req = CloneRequest(
+            originalPackage = "com.example.test",
+            clonePackage = "com.example.test.clone1",
+            authorityMap = mapOf("com.example.test.provider" to "cm.a1b2c3d4.provider")
+        )
+        val product = AppCloneBuilder().build(src, req)
+        assertFalse(product.diag.hasErrors)
+        val outNames = ZipIO.read(product.apk).map { it.name }
+        // stale v1 signature files must be gone
+        assertFalse(outNames.contains("META-INF/CERT.RSA"))
+        assertFalse(outNames.contains("META-INF/MANIFEST.MF"))
+        // 16 KB alignment (Android 15+ 16 KB page-size devices)
+        val so = ZipIO.read(product.apk).first { it.name == "lib/arm64-v8a/libtest.so" }
+        assertEquals("stored .so must be 16384-aligned in output", 0L, so.dataOffset % 16384)
+        val report = ApkValidator().validate(product.apk, req)
+        assertTrue("validator must pass: ${report.errors}", report.ok)
+    }
+
+    @Test
+    fun `build output is deterministic - same input twice gives identical bytes`() {
+        val src = buildTestApk("com.example.test", "com.example.test.provider", listOf("com.example.test.provider"))
+        val req = CloneRequest(
+            originalPackage = "com.example.test",
+            clonePackage = "com.example.test.clone1",
+            authorityMap = mapOf("com.example.test.provider" to "cm.a1b2c3d4.provider")
+        )
+        val a = AppCloneBuilder().build(src, req).apk
+        val b = AppCloneBuilder().build(src, req).apk
+        assertTrue("build must be deterministic (identical bytes)", a.contentEquals(b))
+    }
+
+    @Test
+    fun `dex order violations are reported not hidden`() {
+        // "com.example.test" sorts before "com.example.test.provider".
+        // Replacing the latter with "cm.a1b2c3d4.provider" breaks UTF-16 sort order.
+        val dex = buildDex("com.example.test", "com.example.test.provider", "zzz")
+        val req = CloneRequest(
+            originalPackage = "com.example.test",
+            clonePackage = "com.example.test.clone1",
+            authorityMap = mapOf("com.example.test.provider" to "cm.a1b2c3d4.provider")
+        )
+        val diag = CloneDiag()
+        val patched = dex.copyOf()
+        val r = DexStringPatcher().patch(patched, req, diag)
+        assertEquals(1, r.replacements)
+        assertTrue("order violations must be REPORted", r.orderViolations >= 1)
     }
 
     @Test

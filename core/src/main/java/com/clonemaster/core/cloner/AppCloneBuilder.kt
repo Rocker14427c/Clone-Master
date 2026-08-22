@@ -30,9 +30,48 @@ class AppCloneBuilder {
         val manifestResult: ManifestTransformResult?
     )
 
-    fun build(originalApk: ByteArray, request: CloneRequest): Product {
+    /** RSA keypair + self-signed certificate used to sign the clone. */
+    class SignMaterial(val keyPair: java.security.KeyPair, val certDer: ByteArray)
+
+    companion object {
+        /** One signing identity per process (stable across builds in a session). */
+        @Volatile private var cachedMaterial: SignMaterial? = null
+
+        fun generateSignMaterial(): SignMaterial {
+            val kp = SigningKey.generateKeyPair()
+            return SignMaterial(kp, SigningKey.buildSelfSignedCertificate(kp))
+        }
+
+        fun cachedSignMaterial(): SignMaterial =
+            cachedMaterial ?: synchronized(this) {
+                cachedMaterial ?: generateSignMaterial().also { cachedMaterial = it }
+            }
+
+        /** Restore a persisted signing identity (PKCS#8 private key + X.509 DER cert). */
+        fun signMaterialFrom(privateKeyPkcs8: ByteArray, certDer: ByteArray): SignMaterial {
+            val kf = java.security.KeyFactory.getInstance("RSA")
+            val priv = kf.generatePrivate(java.security.spec.PKCS8EncodedKeySpec(privateKeyPkcs8))
+            val cert = java.security.cert.CertificateFactory.getInstance("X.509")
+                .generateCertificate(java.io.ByteArrayInputStream(certDer)) as java.security.cert.X509Certificate
+            return SignMaterial(java.security.KeyPair(cert.publicKey, priv), certDer)
+        }
+
+        fun encodePrivateKey(m: SignMaterial): ByteArray = m.keyPair.private.encoded
+    }
+
+    /** @param material optional persisted signing identity; null -> process-cached/default */
+    fun build(originalApk: ByteArray, request: CloneRequest, material: SignMaterial? = null): Product {
         val diag = CloneDiag()
-        val entries = ZipIO.read(originalApk)
+        val allEntries = ZipIO.read(originalApk)
+
+        // Drop the ORIGINAL application's v1 (JAR) signature files: they are
+        // invalid after our content changes and can break verification on
+        // installers that fall back to the v1 scheme. We re-sign with v2.
+        val staleSig = allEntries.filter { ZipIO.Companion.isStaleV1SignatureFile(it.name) }
+        if (staleSig.isNotEmpty()) {
+            diag.log("Removed stale v1 signature files: ${staleSig.map { it.name }.joinToString(", ")}")
+        }
+        val entries = allEntries.filterNot { ZipIO.Companion.isStaleV1SignatureFile(it.name) }
 
         // ---------------- manifest ----------------
         val manifestEntry = entries.firstOrNull { it.name == "AndroidManifest.xml" }
@@ -99,9 +138,8 @@ class AppCloneBuilder {
         val unsigned = ZipIO().write(entries, replacements, additions)
         diag.log("Repacked APK: ${unsigned.size} bytes (unsigned)")
 
-        val keyPair = SigningKey.generateKeyPair()
-        val certDer = SigningKey.buildSelfSignedCertificate(keyPair)
-        val signed = V2Scheme.V2Signer(keyPair, certDer).sign(unsigned)
+        val signMaterial = material ?: cachedSignMaterial()
+        val signed = V2Scheme.V2Signer(signMaterial.keyPair, signMaterial.certDer).sign(unsigned)
         diag.log("v2-signed (RSA-2048/SHA-256), certificate CN=Clone-Master Clone Signer")
 
         // ---------------- validate ----------------
@@ -111,6 +149,8 @@ class AppCloneBuilder {
             error("Post-build validation FAILED – clone NOT usable. " + report.errors.joinToString(" | "))
         }
 
+        diag.log("Build completed and structurally validated (ZIP+manifest+DEX+alignment+CRC+signature). " +
+                "Installation on a device is NOT verified in this build environment – use the install/export flow on the device.")
         return Product(signed, diag, manifestResult)
     }
 
