@@ -3,7 +3,6 @@ package com.clonemaster.core.cloner
 import com.clonemaster.core.cloner.apk.ApkValidator
 import com.clonemaster.core.cloner.apk.ZipIO
 import com.clonemaster.core.cloner.axml.BinaryXml
-import com.clonemaster.core.cloner.dex.DexStringPatcher
 import com.clonemaster.core.cloner.manifest.ManifestCloner
 import com.clonemaster.core.cloner.manifest.ManifestTransformResult
 import com.clonemaster.core.cloner.manifest.findAttr
@@ -95,37 +94,47 @@ class AppCloneBuilder {
         diag.log("Manifest: ${request.originalPackage} -> ${request.clonePackage}, " +
                 "authorities=${manifestResult.authorityMap.size}, sharedUserIdRemoved=${manifestResult.removedSharedUserId}")
 
-        // ---------------- dex ----------------
+        // ---------------- dex (FULL REBUILD via dexlib2) ----------------
+        // The string pool is rebuilt, so replacements may be any length —
+        // "NOT FITTED" / "must fit" no longer exists. Types in the original
+        // package are renamed together with all references; multidex files are
+        // rewritten independently.
         val replacements = mutableMapOf<String, ByteArray>()
         replacements["AndroidManifest.xml"] = newManifest
         val dexEntries = entries.filter { it.name.matches(Regex("classes(\\d*)\\.dex")) }
         if (dexEntries.isEmpty()) {
             diag.warn("No classes.dex found in source APK (native-only apps are supported)")
         }
-        val patcher = DexStringPatcher()
-        val notFittedAll = mutableListOf<String>()
+        val rewriter = com.clonemaster.core.cloner.dex.DexPackageRewriter(
+            effectiveRequest.originalPackage,
+            effectiveRequest.clonePackage,
+            effectiveRequest.authorityMap
+        )
+        var totalStrings = 0
+        var totalTypes = 0
+        var totalClasses = 0
         for (de in dexEntries) {
             val dexData = if (de.method == ZipIO.STORED) de.compressedData
             else inflate(de.compressedData, de.uncompressedSize.toInt())
-            val patchedDex = dexData.copyOf()
-            val r = patcher.patch(patchedDex, effectiveRequest, diag)
-            diag.log("${de.name}: patched ${r.replacements} strings" +
-                    (if (r.notFitted.isNotEmpty()) ", NOT FITTED: ${r.notFitted.joinToString(", ")}" else ""))
-            notFittedAll += r.notFitted
-            if (r.replacements > 0) replacements[de.name] = patchedDex
+            try {
+                val r = rewriter.rewrite(dexData)
+                totalStrings += r.rewrittenStrings
+                totalTypes += r.rewrittenTypes
+                totalClasses += r.classes.size
+                if (r.rewrittenStrings > 0 || r.rewrittenTypes > 0) {
+                    replacements[de.name] = r.dex
+                    diag.log("${de.name}: REWROTE ${r.rewrittenStrings} strings, ${r.rewrittenTypes} type references (${r.classes.size} classes)")
+                } else {
+                    diag.log("${de.name}: no package references to rewrite (${r.classes.size} classes)")
+                }
+            } catch (e: Exception) {
+                error("${de.name}: DEX rewrite failed (" + e.message + "). " +
+                        "Refusing to produce an APK with unpatched DEX.")
+            }
         }
-        // Authority strings MUST fit in every dex – otherwise fail clearly.
-        val authorityNotFitted = notFittedAll.filter { it in request.authorityMap.keys }
-        if (authorityNotFitted.isNotEmpty()) {
-            error("Authority strings could not be rewritten in DEX (too long for in-place patch): " +
-                    authorityNotFitted.joinToString(", ") +
-                    ". Refusing to produce an install-invalid APK.")
-        }
-        // Original package hard-coded strings that could not be fitted: warn only.
-        val pkgNotFitted = notFittedAll.filter { it == request.originalPackage || it.startsWith(request.originalPackage + ".") }
-        if (pkgNotFitted.isNotEmpty()) {
-            diag.warn("Hard-coded package strings not rewritten (longer than original): " +
-                    pkgNotFitted.joinToString(", ") + ". App may run package-integrity checks; reported, not hidden.")
+        diag.log("DEX total: $totalStrings strings + $totalTypes type references rewritten across $totalClasses classes")
+        if (dexEntries.isNotEmpty() && totalStrings == 0 && totalTypes == 0) {
+            diag.warn("No original-package references found in any DEX - clone is a pure package rename")
         }
 
         // ---------------- extra assets ----------------

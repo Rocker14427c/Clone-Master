@@ -156,7 +156,6 @@ object V2Scheme {
                 val pairSize = le64(apk, p).toInt()
                 val id = le32(apk, p + 8)
                 if (id == SIGNING_BLOCK_ID) v2Payload = apk.copyOfRange(p + 12, p + 12 + (pairSize - 4))
-                println("PAIR-DBG p=" + p + " pairSize=" + pairSize + " id=" + Integer.toHexString(id) + " payloadLen=" + (v2Payload?.size ?: -1))
                 p += 8 + pairSize
             }
             requireNotNull(v2Payload) { "v2 signature block not found" }

@@ -3,6 +3,7 @@ package com.clonemaster.core.cloner.apk
 import com.clonemaster.core.cloner.CloneRequest
 import com.clonemaster.core.cloner.axml.BinaryXml
 import com.clonemaster.core.cloner.manifest.findAttr
+import com.clonemaster.core.cloner.dex.DexPackageRewriter
 import com.clonemaster.core.cloner.sign.V2Scheme
 
 /**
@@ -82,6 +83,39 @@ class ApkValidator {
             }
             check("no original authority strings in manifest", !manifestHasOldAuth)
 
+            val dexEntries = entries.filter { it.name.matches(Regex("classes(\\d*)\\.dex")) }
+
+            // ---- semantic: every manifest component must resolve to a class in DEX ----
+            // (after a package rename, absolute/relative component names must match the
+            // classes the DEX engine moved to the new package; a missing component is an
+            // install/launch-breaking defect that structural checks cannot catch.)
+            val dexClassSet = HashSet<String>()
+            for (de in dexEntries) {
+                val dd = if (de.method == ZipIO.STORED) de.compressedData
+                else inflate(de.compressedData, de.uncompressedSize.toInt())
+                dexClassSet.addAll(DexPackageRewriter.listClasses(dd))
+            }
+            val missingComponents = mutableListOf<String>()
+            val componentElements = setOf(
+                "application", "activity", "activity-alias", "service", "receiver", "provider", "instrumentation"
+            )
+            for (el in doc.elements()) {
+                if (doc.elementName(el) !in componentElements) continue
+                val nameAttr = doc.findAttr(el, "name") ?: continue
+                val name = doc.attrValue(nameAttr)
+                val resolved = resolveComponent(name, request.clonePackage) ?: continue
+                if (resolved !in dexClassSet) missingComponents.add("$name (resolved $resolved)")
+                // activity-alias also checks targetActivity
+                if (doc.elementName(el) == "activity-alias") {
+                    val ta = doc.findAttr(el, "targetActivity") ?: continue
+                    val tResolved = resolveComponent(doc.attrValue(ta), request.clonePackage)
+                    if (tResolved != null && tResolved !in dexClassSet) missingComponents.add("targetActivity ${doc.attrValue(ta)}")
+                }
+            }
+            check("all manifest components resolve to classes in DEX" +
+                    (if (missingComponents.isEmpty()) "" else " (missing: ${missingComponents.joinToString()})"),
+                missingComponents.isEmpty())
+
             // ---- alignment: measured against REAL data offsets in THIS archive ----
             val alignedEntries = entries.filter { it.method == ZipIO.STORED }
             val misaligned = alignedEntries.filter { e ->
@@ -93,7 +127,6 @@ class ApkValidator {
                 misaligned.isEmpty()
             )
 
-            val dexEntries = entries.filter { it.name.matches(Regex("classes(\\d*)\\.dex")) }
             check("classes.dex present (${dexEntries.size} dex files)", dexEntries.isNotEmpty())
             var dexOk = dexEntries.isNotEmpty()
             val storedCrcBad = mutableListOf<String>()
@@ -146,6 +179,14 @@ class ApkValidator {
         } catch (e: Exception) {
             Report(false, checks, errors + "validation failed: ${e.message}")
         }
+    }
+
+    /** Resolves a component name against the clone package; returns descriptor or null (external package). */
+    private fun resolveComponent(name: String, clonePkg: String): String? = when {
+        name.startsWith(".") -> DexPackageRewriter.toDescriptor(clonePkg + name)
+        name.startsWith(clonePkg) || name.contains(".") && name.startsWith(clonePkg + ".") ->
+            DexPackageRewriter.toDescriptor(name)
+        else -> null // external/framework component – cannot verify, skip
     }
 
     private fun containsUtf8(data: ByteArray, needle: String): Boolean {

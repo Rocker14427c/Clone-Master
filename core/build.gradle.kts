@@ -3,6 +3,10 @@ plugins {
 }
 
 dependencies {
+    // Full DEX transformation/rebuild engine (Apache-2.0, pure JVM -> runs on Android).
+    // Replaces the fragile in-place string patcher: the string pool is REBUILT, so
+    // replacements may be longer than the originals ("NOT FITTED" is gone).
+    implementation("org.smali:dexlib2:2.5.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("net.dongliu:apk-parser:2.6.10")
     implementation("org.ow2.asm:asm:9.6")

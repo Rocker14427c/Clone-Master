@@ -297,7 +297,11 @@ object BinaryXml {
             dataSize += e.size
         }
         val headerSize = 28 + 4 * strings.size
-        val total = headerSize + dataSize
+        // CRITICAL: the string pool chunk size must be a multiple of 4 (aapt/
+        // apksig/Android's parser reject misaligned XML chunks). Padding is
+        // appended AFTER the string data, so every offset stays valid.
+        val paddedDataSize = (dataSize + 3) and -4
+        val total = headerSize + paddedDataSize
         val buf = ByteArray(total)
         var p = 0
         putShort(buf, p, TYPE_STRING_POOL); putShort(buf, p + 2, 28)
@@ -311,6 +315,7 @@ object BinaryXml {
         for ((i, e) in encoded.withIndex()) {
             System.arraycopy(e, 0, buf, p + headerSize + offsets[i], e.size)
         }
+        // remaining bytes are zero padding (buf is zero-initialized)
         return buf
     }
 
