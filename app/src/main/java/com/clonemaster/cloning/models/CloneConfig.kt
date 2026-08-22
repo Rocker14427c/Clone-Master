@@ -18,9 +18,9 @@ data class CloneConfig(
     var iconBadge: IconBadge = IconBadge.NONE,
     var badgeNumber: Int = 1,
     var badgeColor: Int = 0xFF2196F3.toInt(),
-    var removeBranding: Boolean = true,
+    var removeBranding: Boolean = false,
     var bundleOriginalApk: Boolean = false,
-    var includeObb: Boolean = true,
+    var includeObb: Boolean = false,
     var includeExternalData: Boolean = false,
 
     // Identity
@@ -110,7 +110,7 @@ data class ParityFeaturesConfig(
 ) : Serializable
 
 data class TrackingBlockerConfig(
-    var disableAppsFlyer: Boolean = true,
+    var disableAppsFlyer: Boolean = false,
     var disableFirebaseAnalytics: Boolean = false,
     var disableFacebook: Boolean = false,
     var disableAllTracking: Boolean = false,
@@ -118,8 +118,8 @@ data class TrackingBlockerConfig(
 ) : Serializable
 
 data class CpuGpuConfig(
-    var hideCpuInfo: Boolean = true,
-    var hideGpuInfo: Boolean = true,
+    var hideCpuInfo: Boolean = false,
+    var hideGpuInfo: Boolean = false,
     var spoofCpuModel: String = "Qualcomm Kryo 385",
     var spoofCpuCores: Int = 8,
     var spoofCpuFreq: String = "2.84 GHz",
@@ -128,11 +128,11 @@ data class CpuGpuConfig(
 ) : Serializable
 
 data class HookOptionsConfig(
-    var nativeHooksEnabled: Boolean = true,
+    var nativeHooksEnabled: Boolean = false,
     var disableHooks: Boolean = false,
     var safeMode: Boolean = false,
-    var hookPine: Boolean = true,
-    var hookByteHook: Boolean = true,
+    var hookPine: Boolean = false,
+    var hookByteHook: Boolean = false,
     var hookAndHook: Boolean = false
 ) : Serializable
 
@@ -144,8 +144,8 @@ data class ManifestOptionsConfig(
 data class SneezeConfig(
     var enabled: Boolean = false,
     var sensitivity: Float = 0.8f,
-    var useProximity: Boolean = true,
-    var useSound: Boolean = true,
+    var useProximity: Boolean = false,
+    var useSound: Boolean = false,
     var soundThresholdDb: Int = 70
 ) : Serializable
 
@@ -189,14 +189,14 @@ data class NotificationToggleConfig(
 data class TunnelManagerConfig(
     var enabled: Boolean = false,
     var activeTunnelId: String? = null,
-    var autoSwitchOnFailure: Boolean = true
+    var autoSwitchOnFailure: Boolean = false
 ) : Serializable
 
 data class ProxyListConfig(
     var autoRotate: Boolean = false,
     var rotateIntervalMinutes: Int = 30,
-    var testOnAdd: Boolean = true,
-    var useBestLatency: Boolean = true
+    var testOnAdd: Boolean = false,
+    var useBestLatency: Boolean = false
 ) : Serializable
 
 data class DotsConfig(
@@ -205,37 +205,37 @@ data class DotsConfig(
 
 data class LocaleConfig(
     var customLocale: String = "",
-    var usePerAppLocale: Boolean = true
+    var usePerAppLocale: Boolean = false
 ) : Serializable
 
 data class WebViewScriptConfig(
     var injectMode: String = "DOCUMENT_END",
-    var enabled: Boolean = true
+    var enabled: Boolean = false
 ) : Serializable
 
 data class DeviceFilteringConfig(
     var filterQuery: String = "",
-    var filterByTag: Boolean = true,
-    var enabled: Boolean = true
+    var filterByTag: Boolean = false,
+    var enabled: Boolean = false
 ) : Serializable
 
 data class LayoutInspectorConfig(
-    var enabled: Boolean = true,
-    var liveHierarchy: Boolean = true,
-    var showProperties: Boolean = true
+    var enabled: Boolean = false,
+    var liveHierarchy: Boolean = false,
+    var showProperties: Boolean = false
 ) : Serializable
 
 // --- Data Bundling / Migration Config ---
 data class DataBundleConfig(
     var enabled: Boolean = false,
-    var bundleSharedPrefs: Boolean = true,
-    var bundleDatabases: Boolean = true,
-    var bundleRoomDatabases: Boolean = true,
-    var bundleFiles: Boolean = true,
-    var bundleCacheIndependentFiles: Boolean = true,
-    var bundleWebViewData: Boolean = true,
-    var bundleExternalAppDirs: Boolean = true,
-    var bundleObbDirs: Boolean = true,
+    var bundleSharedPrefs: Boolean = false,
+    var bundleDatabases: Boolean = false,
+    var bundleRoomDatabases: Boolean = false,
+    var bundleFiles: Boolean = false,
+    var bundleCacheIndependentFiles: Boolean = false,
+    var bundleWebViewData: Boolean = false,
+    var bundleExternalAppDirs: Boolean = false,
+    var bundleObbDirs: Boolean = false,
     var customDirs: MutableList<String> = mutableListOf(), // user explicitly selected directories
     var excludeDirs: MutableList<String> = mutableListOf(),
     var selectedCategories: MutableList<DataCategory> = mutableListOf(DataCategory.SHARED_PREFS, DataCategory.DATABASES, DataCategory.FILES),
@@ -310,49 +310,49 @@ data class DataBundleFileEntry(
 // --- Environment Spoofing Config (dedicated subsystem) ---
 data class EnvironmentConfig(
     // Master toggles – independently configurable per-clone
-    var hideRoot: Boolean = true,
-    var hideEmulator: Boolean = true,
-    var hideDeveloperOptions: Boolean = true,
-    var hideUsbAdb: Boolean = true,
-    var hideMockLocation: Boolean = true,
-    var spoofPhysicalDeviceProfile: Boolean = true,
+    var hideRoot: Boolean = false,
+    var hideEmulator: Boolean = false,
+    var hideDeveloperOptions: Boolean = false,
+    var hideUsbAdb: Boolean = false,
+    var hideMockLocation: Boolean = false,
+    var spoofPhysicalDeviceProfile: Boolean = false,
 
     // Root mitigation fine-grained
-    var rootHideLevel: RootHideLevel = RootHideLevel.AGGRESSIVE,
-    var hideRootArtifacts: Boolean = true,
-    var hideRootPaths: Boolean = true,
-    var hideRootProperties: Boolean = true,
-    var hideRootNativeChecks: Boolean = true,
-    var hideRootJavaChecks: Boolean = true,
+    var rootHideLevel: RootHideLevel = RootHideLevel.OFF,
+    var hideRootArtifacts: Boolean = false,
+    var hideRootPaths: Boolean = false,
+    var hideRootProperties: Boolean = false,
+    var hideRootNativeChecks: Boolean = false,
+    var hideRootJavaChecks: Boolean = false,
 
     // Emulator mitigation fine-grained
-    var emulatorHideLevel: EmulatorHideLevel = EmulatorHideLevel.FULL,
-    var spoofBuildFingerprint: Boolean = true,
-    var spoofManufacturerModel: Boolean = true,
-    var spoofHardwareIds: Boolean = true,
-    var spoofCpuAbi: Boolean = true,
-    var hideEmulatorFiles: Boolean = true,
-    var hideEmulatorNodes: Boolean = true,
-    var hideQemuProps: Boolean = true,
-    var hideEmulatorKernelInfo: Boolean = true,
-    var spoofTelephony: Boolean = true,
-    var spoofSimOperator: Boolean = true,
-    var spoofNetworkInterfaces: Boolean = true,
-    var spoofSensors: Boolean = true,
-    var spoofCamera: Boolean = true,
-    var spoofBattery: Boolean = true,
-    var spoofBluetooth: Boolean = true,
-    var spoofWifi: Boolean = true,
-    var spoofUsbAdbProps: Boolean = true,
-    var enforceConsistency: Boolean = true,
+    var emulatorHideLevel: EmulatorHideLevel = EmulatorHideLevel.OFF,
+    var spoofBuildFingerprint: Boolean = false,
+    var spoofManufacturerModel: Boolean = false,
+    var spoofHardwareIds: Boolean = false,
+    var spoofCpuAbi: Boolean = false,
+    var hideEmulatorFiles: Boolean = false,
+    var hideEmulatorNodes: Boolean = false,
+    var hideQemuProps: Boolean = false,
+    var hideEmulatorKernelInfo: Boolean = false,
+    var spoofTelephony: Boolean = false,
+    var spoofSimOperator: Boolean = false,
+    var spoofNetworkInterfaces: Boolean = false,
+    var spoofSensors: Boolean = false,
+    var spoofCamera: Boolean = false,
+    var spoofBattery: Boolean = false,
+    var spoofBluetooth: Boolean = false,
+    var spoofWifi: Boolean = false,
+    var spoofUsbAdbProps: Boolean = false,
+    var enforceConsistency: Boolean = false,
 
     // Physical device profile to use for coherent spoofing
     var physicalDeviceProfileId: String = "pixel8_pro", // default
     var customDeviceProfile: DeviceProfile? = null,
 
     // Diagnostics
-    var enableDetectionDiagnostics: Boolean = true,
-    var reportUnmitigatableChecks: Boolean = true
+    var enableDetectionDiagnostics: Boolean = false,
+    var reportUnmitigatableChecks: Boolean = false
 
 ) : Serializable
 
@@ -574,7 +574,7 @@ data class PrivacyConfig(
     var fakeLat: Double = 37.4220,
     var fakeLng: Double = -122.0841,
     var fakeAltitude: Double = 0.0,
-    var hideMockLocation: Boolean = true,
+    var hideMockLocation: Boolean = false,
     var fakeTimezone: String = "",
     var fakeSensors: Boolean = false,
     var disableSensors: Boolean = false,
@@ -583,7 +583,7 @@ data class PrivacyConfig(
     var disableScreenRecord: Boolean = false,
     var floatingKeyboard: Boolean = false,
     var disableAutofill: Boolean = false,
-    var hideRoot: Boolean = true,
+    var hideRoot: Boolean = false,
     var hideOtherApps: Boolean = false,
     var disableLogcat: Boolean = false,
     var disableShare: Boolean = false,
@@ -609,7 +609,7 @@ data class DisplayConfig(
     var keepScreenAwake: Boolean = false,
     var floatingWindow: Boolean = false,
     var freeformWindow: Boolean = false,
-    var multiWindow: Boolean = true,
+    var multiWindow: Boolean = false,
     var pipSupport: Boolean = false,
     var flipScreen: Boolean = false,
     var hudMode: Boolean = false,
@@ -660,7 +660,7 @@ data class MediaConfig(
     var disableChromecast: Boolean = false,
     var secondaryDisplay: Boolean = false,
     var volumeRockerLock: Boolean = false,
-    var showVolumeIndicator: Boolean = true,
+    var showVolumeIndicator: Boolean = false,
     var disableHaptics: Boolean = false,
     var audioCapture: Boolean = false,
     var preferredCameraApp: String = "",
@@ -693,14 +693,14 @@ enum class VolumeKeyAction { DEFAULT, MEDIA, NAVIGATION, CUSTOM }
 data class StorageConfig(
     var installToSd: Boolean = false,
     var disableMediaAccess: Boolean = false,
-    var redirectExternalStorage: Boolean = true,
+    var redirectExternalStorage: Boolean = false,
     var preventBackup: Boolean = false,
     var preserveDataOnUninstall: Boolean = false,
     var clearCacheOnExit: Boolean = false,
     var secureDeletePaths: MutableList<String> = mutableListOf(),
     var bundleSdDirs: MutableList<String> = mutableListOf(),
     var bundleExportedData: Boolean = false,
-    var isolateStorage: Boolean = true
+    var isolateStorage: Boolean = false
 ) : Serializable
 
 data class LaunchingConfig(
@@ -776,8 +776,8 @@ data class NotificationConfig(
 ) : Serializable
 
 data class GameConfig(
-    var supportObb: Boolean = true,
-    var copyObb: Boolean = true,
+    var supportObb: Boolean = false,
+    var copyObb: Boolean = false,
     var bundleObb: Boolean = false,
     var keyMapperEnabled: Boolean = false,
     var keyMappings: MutableMap<String, String> = mutableMapOf(),
@@ -834,7 +834,7 @@ data class DeveloperConfig(
     var webViewJsInjection: MutableList<String> = mutableListOf(),
     var webViewNavOverrides: MutableMap<String, String> = mutableMapOf(),
     var webViewUa: String = "",
-    var nativeHooksEnabled: Boolean = true,
+    var nativeHooksEnabled: Boolean = false,
     var hookConfig: MutableMap<String, String> = mutableMapOf(),
     var safeMode: Boolean = false
 ) : Serializable

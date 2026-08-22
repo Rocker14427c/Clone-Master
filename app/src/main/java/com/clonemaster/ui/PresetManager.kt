@@ -23,9 +23,8 @@ object PresetManager {
         // Return new config with preset applied – only enables existing functionality
         return when (preset) {
             PresetType.DEFAULT -> config.copy(
-                removeBranding = true,
-                privacy = config.privacy.copy(hideRoot = true, excludeFromRecents = false),
-                display = config.display.copy(keepScreenAwake = false)
+                // Default = minimal changes (package rename + branding removal). No optional features.
+                removeBranding = true
             )
 
             PresetType.PRIVACY -> config.copy(
@@ -98,7 +97,7 @@ object PresetManager {
                 display = DisplayConfig(),
                 media = MediaConfig(),
                 navigation = NavigationConfig(),
-                storage = StorageConfig(isolateStorage = true),
+                storage = StorageConfig(),
                 launching = LaunchingConfig(),
                 networking = NetworkingConfig(),
                 notification = NotificationConfig(),
