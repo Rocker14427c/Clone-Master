@@ -18,7 +18,7 @@ import com.clonemaster.cloning.models.CloneConfig
  *     until the gate flag is set);
  *  2. the OLD counter only counted Boolean values present in the UI's configValues
  *     map, so flags enabled by PRESETS (e.g. Privacy preset sets
- *     spoofAndroidId=true) were invisible and uncounted -> UI could say "0/83"
+ *     spoofAndroidId=true) were invisible and uncounted -> UI could say "0/N"
  *     while the saved config actually contained active identity spoofing.
  *
  * OptionState computes enablement straight from CloneConfig:

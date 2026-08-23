@@ -77,21 +77,53 @@ class BuildProgressActivity : AppCompatActivity() {
 
         buttonExport.setOnClickListener {
             resultApk?.let { apk ->
-                try {
-                    val exportDir = getExternalFilesDir("exports")
-                    exportDir?.mkdirs()
-                    val exportFile = File(exportDir, apk.name)
-                    apk.copyTo(exportFile, overwrite = true)
-                    com.clonemaster.diagnostics.DiagLog.i("Export", "APK exported to ${exportFile.absolutePath}")
-                    android.widget.Toast.makeText(this, "Exported to ${exportFile.absolutePath}", android.widget.Toast.LENGTH_LONG).show()
-                } catch (ignored: Exception) {
-                    com.clonemaster.diagnostics.DiagLog.e("Export", "export failed: ${ignored.message}", ignored)
-                    android.widget.Toast.makeText(this, "Export failed: ${ignored.message}", android.widget.Toast.LENGTH_SHORT).show()
+                // Primary: public Downloads collection (visible in any file manager).
+                when (val res = com.clonemaster.io.PublicDownloads.save(this, apk, apk.name)) {
+                    is com.clonemaster.io.PublicDownloads.Result.Saved -> {
+                        com.clonemaster.diagnostics.DiagLog.i("Export", "APK saved to public Downloads: ${res.display}")
+                        android.widget.Toast.makeText(this, "Saved to Downloads: ${res.display}", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    is com.clonemaster.io.PublicDownloads.Result.NeedsPermission -> {
+                        com.clonemaster.diagnostics.DiagLog.w("Export", "WRITE_EXTERNAL_STORAGE not granted – requesting")
+                        androidx.core.app.ActivityCompat.requestPermissions(
+                            this, arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), REQ_WRITE_FOR_EXPORT
+                        )
+                        android.widget.Toast.makeText(this, "Grant storage permission, then tap Export again.", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    is com.clonemaster.io.PublicDownloads.Result.Failed -> {
+                        // Fallback: app-private exports dir (still usable via adb/file manager w/ root)
+                        try {
+                            val exportDir = getExternalFilesDir("exports")
+                            exportDir?.mkdirs()
+                            val exportFile = java.io.File(exportDir, apk.name)
+                            apk.copyTo(exportFile, overwrite = true)
+                            com.clonemaster.diagnostics.DiagLog.w("Export", "public save failed (${res.reason}); exported to ${exportFile.absolutePath}")
+                            android.widget.Toast.makeText(this, "Exported to app folder: ${exportFile.absolutePath}", android.widget.Toast.LENGTH_LONG).show()
+                        } catch (ignored: Exception) {
+                            com.clonemaster.diagnostics.DiagLog.e("Export", "export failed: ${ignored.message}", ignored)
+                            android.widget.Toast.makeText(this, "Export failed: ${ignored.message}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 }
             }
         }
 
+        registerInstallReceiver()
         startBuild()
+    }
+
+    companion object {
+        private const val REQ_WRITE_FOR_EXPORT = 41
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_WRITE_FOR_EXPORT &&
+            grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            com.clonemaster.diagnostics.DiagLog.i("Export", "storage permission granted – retrying export")
+            buttonExport.performClick()
+        }
     }
 
     private fun startBuild() {
@@ -181,8 +213,16 @@ class BuildProgressActivity : AppCompatActivity() {
 
     private var installReceiver: BroadcastReceiver? = null
 
-    override fun onResume() {
-        super.onResume()
+    /**
+     * LIFECYCLE FIX (device-verified gap): the receiver used to be registered in
+     * onResume and unregistered in onPause. The system "Do you want to install
+     * this app?" consent UI PAUSES this activity, so the install-result
+     * broadcast often arrived while we were unregistered → the user saw neither
+     * success nor the real PackageInstaller error. The receiver now lives for
+     * the whole activity lifetime (onCreate → onDestroy), so the result is
+     * caught whenever it arrives.
+     */
+    private fun registerInstallReceiver() {
         if (installReceiver == null) {
             installReceiver = object : BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
@@ -235,8 +275,8 @@ class BuildProgressActivity : AppCompatActivity() {
         }
     }
 
-    override fun onPause() {
-        super.onPause()
+    override fun onDestroy() {
+        super.onDestroy()
         installReceiver?.let { unregisterReceiver(it) }
         installReceiver = null
     }

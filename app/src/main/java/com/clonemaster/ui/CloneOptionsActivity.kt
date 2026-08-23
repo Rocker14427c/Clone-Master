@@ -609,7 +609,7 @@ class CloneOptionsActivity : AppCompatActivity() {
                                 }
                                 startActivity(intent)
                             }
-                            "diagnostics_logcatViewer" -> {
+                            "diagnostics_logcatViewer", "developer_logcat" -> {
                                 startActivity(Intent(this, com.clonemaster.ui.LogcatViewerActivity::class.java))
                             }
                             "diagnostics_compatibilityReport" -> {

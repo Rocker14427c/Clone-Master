@@ -10,6 +10,10 @@ BROKEN (never reaches the clone) / BROKEN (UI) (mapping/duplication defect) / BL
 
 **Headline (updated 2026-08-23, P0-2):** the runtime-delivery mechanism now EXISTS and is injected on-device when features are enabled (fail-closed, application wrap, config contract-pinned). V1 delivers 3 runtime behaviors (screenshots/keep-awake/orientation) with on-device verification pending; ~57 hook-dependent options still need the P1 hook substrate. Verified end-to-end: package/authority transform + label/versionName/versionCode/removeBranding.
 
+**Addendum 2026-08-23 (v2.2.0-diagnostics, v2.2.1-uifixes / P1-4):**
+- v2.2.0: persistent in-app diagnostics (session log of screens/options/builds/installs + crash capture + one-tap shareable report; clone-side optional `fileLog` in runtime meta v2). See `docs/DIAGNOSTICS.md`.
+- v2.2.1: registry deduped **83 → 77 rows**; removed: `developer_versionName` (dup of `general_versionName`), `privacy_hideRoot`/`privacy_hideEmulator`/`privacy_hideMockLocation` (canonical ENVIRONMENT rows kept), `diagnostics_logcatViewer` (`developer_logcat` kept — and its Open button now actually launches LogcatViewerActivity, was dead dialog), `identity_webViewUa` (`webview_userAgent` kept, repointed `developer.webViewUa` → `identity.webViewUserAgent`). Fixed: `diagnostics_compatibilityReport` path `isBatch` → `diagnostics.compatibilityReport`. Install-result receiver lifetime fixed (onCreate→onDestroy; previously missed results while the system consent UI paused the activity). Export now writes to public Downloads (MediaStore on API 29+, legacy/public-dir fallback with permission request; private-dir fallback last resort). Row numbers below refer to the pre-dedupe registry; all other statuses unchanged.
+
 | # | UI Option id | Name | Category | Config field | UI flag | Status | Evidence / gap |
 |---|---|---|---|---|---|---|---|
 | 1 | `general_appName` | Clone App Name | GENERAL | `appName` | SUPPORTED | VERIFIED WORKING | Native path (P0-1): application + launcher labels rewritten as literal in binary manifest; unit test + aapt-verified self-clone (label=\"Clone Verify\"). resources.arsc app_name string still original (P2) |

@@ -205,16 +205,6 @@ object OptionRegistry {
             compatibility = CompatibilityIndicator.SUPPORTED
         ),
         OptionItem(
-            id = "identity_webViewUa",
-            name = "WebView User-Agent",
-            description = "Custom WebView User-Agent per clone",
-            category = OptionCategory.IDENTITY,
-            controlType = ControlType.TEXT_FIELD,
-            configFieldPath = "identity.webViewUserAgent",
-            aliases = listOf("user-agent", "ua", "webview", "webview ua"),
-            compatibility = CompatibilityIndicator.SUPPORTED
-        ),
-        OptionItem(
             id = "identity_deviceProfile",
             name = "Device Profile",
             description = "Select coherent physical device profile for consistent spoofing across Build, Telephony, Sensors, etc.",
@@ -248,27 +238,6 @@ object OptionRegistry {
 
         // PRIVACY
         OptionItem(
-            id = "privacy_hideRoot",
-            name = "Hide Root",
-            description = "Hide root status where technically possible – per-clone toggle",
-            category = OptionCategory.PRIVACY,
-            controlType = ControlType.SWITCH,
-            configFieldPath = "environment.hideRoot",
-            aliases = listOf("root", "hide root", "root hide", "su", "magisk"),
-            compatibility = CompatibilityIndicator.MAY_AFFECT_COMPATIBILITY,
-            requiresWarning = "Root hiding via hooks may be bypassed by direct syscalls – check diagnostics"
-        ),
-        OptionItem(
-            id = "privacy_hideEmulator",
-            name = "Hide Emulator",
-            description = "Hide emulator – separate from root hide, covers QEMU, build fingerprints, hardware, sensors",
-            category = OptionCategory.PRIVACY,
-            controlType = ControlType.SWITCH,
-            configFieldPath = "environment.hideEmulator",
-            aliases = listOf("emulator", "hide emulator", "qemu", "goldfish", "ranchu"),
-            compatibility = CompatibilityIndicator.MAY_AFFECT_COMPATIBILITY
-        ),
-        OptionItem(
             id = "privacy_clipboard",
             name = "Disable Clipboard Access",
             description = "Disable clipboard access for clone",
@@ -298,16 +267,6 @@ object OptionRegistry {
             aliases = listOf("gps", "location", "spoof location", "gps spoof", "fake location"),
             compatibility = CompatibilityIndicator.MAY_AFFECT_COMPATIBILITY,
             requiresWarning = "Location spoofing may be detected by SafetyNet/Play Integrity"
-        ),
-        OptionItem(
-            id = "privacy_hideMockLocation",
-            name = "Hide Mock Location",
-            description = "Hide mock-location indicators where technically possible",
-            category = OptionCategory.PRIVACY,
-            controlType = ControlType.SWITCH,
-            configFieldPath = "environment.hideMockLocation",
-            aliases = listOf("mock location", "hide mock", "mock"),
-            compatibility = CompatibilityIndicator.SUPPORTED
         ),
         OptionItem(
             id = "privacy_screenshots",
@@ -764,16 +723,6 @@ object OptionRegistry {
 
         // DEVELOPER
         OptionItem(
-            id = "developer_versionName",
-            name = "Change Version Name/Code (Developer)",
-            description = "Change version name and code – also in General",
-            category = OptionCategory.DEVELOPER,
-            controlType = ControlType.TEXT_FIELD,
-            configFieldPath = "versionName",
-            aliases = listOf("version name", "version code", "change version"),
-            compatibility = CompatibilityIndicator.SUPPORTED
-        ),
-        OptionItem(
             id = "developer_targetSdk",
             name = "Change Target SDK",
             description = "Change Target SDK version per clone",
@@ -894,7 +843,7 @@ object OptionRegistry {
             description = "Modify WebView User-Agent per clone",
             category = OptionCategory.WEBVIEW,
             controlType = ControlType.TEXT_FIELD,
-            configFieldPath = "developer.webViewUa",
+            configFieldPath = "identity.webViewUserAgent",
             aliases = listOf("webview", "user-agent", "ua", "webview ua", "user agent"),
             compatibility = CompatibilityIndicator.SUPPORTED
         ),
@@ -921,22 +870,12 @@ object OptionRegistry {
 
         // DIAGNOSTICS
         OptionItem(
-            id = "diagnostics_logcatViewer",
-            name = "Logcat Viewer",
-            description = "View clone logs with filtering – for debugging",
-            category = OptionCategory.DIAGNOSTICS,
-            controlType = ControlType.BUTTON,
-            configFieldPath = "developer.logcatViewer",
-            aliases = listOf("logcat", "diagnostics", "logs", "viewer"),
-            compatibility = CompatibilityIndicator.SUPPORTED
-        ),
-        OptionItem(
             id = "diagnostics_compatibilityReport",
             name = "Compatibility Report",
             description = "Show compatibility report before cloning – detects cert validation, Play Services, billing, SafetyNet, etc.",
             category = OptionCategory.DIAGNOSTICS,
             controlType = ControlType.BUTTON,
-            configFieldPath = "isBatch",
+            configFieldPath = "diagnostics.compatibilityReport",
             aliases = listOf("compatibility", "compatibility report", "report", "analysis"),
             compatibility = CompatibilityIndicator.SUPPORTED
         )
