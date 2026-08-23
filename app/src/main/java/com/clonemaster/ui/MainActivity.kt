@@ -90,6 +90,12 @@ class MainActivity : AppCompatActivity() {
             override fun onTabReselected(tab: TabLayout.Tab?) {}
         })
 
+        // Always-visible diagnostics entry (top of the screen). The FAB menu
+        // entry below stays as a second path.
+        findViewById<View>(R.id.buttonDiagnostics).setOnClickListener {
+            startActivity(Intent(this, com.clonemaster.diagnostics.DiagnosticsActivity::class.java))
+        }
+
         // FAB with 4 capabilities
         fab.setOnClickListener {
             showFabDialog()

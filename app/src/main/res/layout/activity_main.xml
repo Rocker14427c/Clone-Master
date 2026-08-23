@@ -5,6 +5,14 @@
     android:layout_height="match_parent"
     android:padding="16dp">
 
+    <!-- Always-visible entry to the diagnostics log: the FAB alone was
+         invisible on real devices (starved by the weighted list below). -->
+    <Button
+        android:id="@+id/buttonDiagnostics"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📋 Diagnostics Log — view &amp; share report" />
+
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -38,18 +46,27 @@
         android:text="No apps found"
         android:visibility="gone"/>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recycler"
+    <!-- List + floating action button: FAB must float ABOVE the list at the
+         bottom end. Previously it was a plain LinearLayout child after a
+         weight=1 RecyclerView, which pushed it off-screen. -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1">
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab_batch"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="end"
-        android:contentDescription="@string/batch_clone"
-        android:src="@android:drawable/ic_input_add" />
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fab_batch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="16dp"
+            android:contentDescription="@string/batch_clone"
+            android:src="@android:drawable/ic_input_add" />
+    </FrameLayout>
 
 </LinearLayout>
