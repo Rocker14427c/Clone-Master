@@ -31,11 +31,25 @@ public final class RuntimeCrashHook {
 
     private RuntimeCrashHook() {}
 
-    public static void install(final Context appContext) {
+    /**
+     * Earliest-possible install: called from HookComponentFactory with the
+     * freshly created but NOT-YET-ATTACHED application instance. The instance
+     * is only STORED now — every context method is called lazily at crash
+     * time, by which the framework has attached it.
+     */
+    public static void installEarly(Context app) {
+        installInternal(app);
+    }
+
+    public static void install(Context appContext) {
+        installInternal(appContext);
+    }
+
+    private static synchronized void installInternal(Context ctx) {
         try {
             final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
             if (previous instanceof RuntimeCrashHandler) return; // already installed
-            Thread.setDefaultUncaughtExceptionHandler(new RuntimeCrashHandler(appContext, previous));
+            Thread.setDefaultUncaughtExceptionHandler(new RuntimeCrashHandler(ctx, previous));
             RuntimeLog.i("crash hook installed (chains to: "
                     + (previous == null ? "system" : previous.getClass().getSimpleName()) + ")");
         } catch (Throwable t) {
@@ -48,7 +62,10 @@ public final class RuntimeCrashHook {
         private final Thread.UncaughtExceptionHandler previous;
 
         RuntimeCrashHandler(Context ctx, Thread.UncaughtExceptionHandler previous) {
-            this.ctx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+            // NOTE: ctx may be an Application that is not attached yet (early
+            // install from the component factory). Never call context methods
+            // here — only store it; all I/O happens at crash time.
+            this.ctx = ctx;
             this.previous = previous;
         }
 

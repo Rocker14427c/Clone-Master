@@ -48,7 +48,10 @@ public final class HookComponentFactory extends AppComponentFactory {
         }
         try {
             app.registerActivityLifecycleCallbacks(new BootCallback());
-            RuntimeLog.i("factory: application created (" + className + "), runtime boot registered");
+            // Crash capture as early as possible: covers Application.onCreate
+            // crashes (factory-mode runtime boot waits for the first activity).
+            RuntimeCrashHook.installEarly(app);
+            RuntimeLog.i("factory: application created (" + className + "), runtime boot + crash hook registered");
         } catch (Throwable t) {
             RuntimeLog.e("factory: failed to register runtime boot – clone continues UNMODIFIED", t);
         }

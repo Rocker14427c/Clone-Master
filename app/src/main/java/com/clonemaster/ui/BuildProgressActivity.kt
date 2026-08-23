@@ -314,6 +314,29 @@ class BuildProgressActivity : AppCompatActivity() {
             }
             return
         }
+        // PRIMARY: the system installer via ACTION_VIEW (FileProvider) — the
+        // exact same code path as tapping the APK in a file manager, which is
+        // device-proven to work. The PackageInstaller session API below is
+        // kept only as a fallback: on several OEM skins (MIUI/HyperOS etc.)
+        // its result PendingIntent is swallowed entirely, producing a fake
+        // "UNKNOWN(-1)" error while nothing actually installs.
+        com.clonemaster.diagnostics.DiagLog.i("Install",
+            "system installer for ${apk.name} (${apk.length()} bytes, pkg=${config.clonePackage})")
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this, "${packageName}.fileprovider", apk)
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(installIntent)
+            textDetail.text = "System installer opened — confirm there, then open the clone from the launcher."
+            return
+        } catch (e: Exception) {
+            com.clonemaster.diagnostics.DiagLog.w("Install",
+                "ACTION_VIEW unavailable (${e.message}); falling back to PackageInstaller session")
+        }
+        // FALLBACK: session API with full status feedback. Each step is logged.
         try {
             val installer = packageManager.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
@@ -328,6 +351,7 @@ class BuildProgressActivity : AppCompatActivity() {
                 try { session.abandon() } catch (ignored: Exception) {}
                 throw e
             }
+            com.clonemaster.diagnostics.DiagLog.i("Install", "session $sessionId written, committing")
             val pendingIntent = PendingIntent.getBroadcast(
                 this, 1001,
                 Intent("com.clonemaster.INSTALL_RESULT").setPackage(packageName),
@@ -340,22 +364,9 @@ class BuildProgressActivity : AppCompatActivity() {
             session.commit(pendingIntent.intentSender)
             textDetail.text = "Installing ${apk.name}…"
         } catch (e: Exception) {
+            com.clonemaster.diagnostics.DiagLog.e("Install", "session path failed: ${e.message}", e)
             android.util.Log.e("CloneMaster", "PackageInstaller path failed: ${e.message}", e)
-            // Fallback: system package installer via FileProvider
-            try {
-                val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(
-                        androidx.core.content.FileProvider.getUriForFile(this@BuildProgressActivity, "${packageName}.fileprovider", apk),
-                        "application/vnd.android.package-archive"
-                    )
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                startActivity(installIntent)
-                textDetail.text = "Opened system package installer (no status feedback available). If it fails, use `adb install` and report the error."
-            } catch (ex: Exception) {
-                textDetail.text = "Install failed: ${ex.message}"
-            }
+            textDetail.text = "Install failed: ${e.message} — use Export (public Downloads) and install from a file manager."
         }
     }
 }
