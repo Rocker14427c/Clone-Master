@@ -3,7 +3,6 @@ package com.clonemaster.runtime;
 import android.app.Activity;
 import android.app.Application;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.WindowManager;
 
 /**
@@ -29,14 +28,14 @@ public final class WindowFlagsApplier implements Application.ActivityLifecycleCa
                 a.getWindow().setFlags(flags, flags);
             }
         } catch (Throwable t) {
-            Log.w(RuntimeInit.TAG, "window flags failed on " + a.getLocalClassName(), t);
+            RuntimeLog.w("window flags failed on " + a.getLocalClassName(), t);
         }
         try {
             if (cfg.orientationLock != -1) {
                 a.setRequestedOrientation(cfg.orientationLock);
             }
         } catch (Throwable t) {
-            Log.w(RuntimeInit.TAG, "orientation lock failed on " + a.getLocalClassName(), t);
+            RuntimeLog.w("orientation lock failed on " + a.getLocalClassName(), t);
         }
         // Reference values kept static for tests:
         // WindowManager.LayoutParams.FLAG_SECURE, FLAG_KEEP_SCREEN_ON are inlined.

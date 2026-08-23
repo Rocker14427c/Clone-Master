@@ -55,6 +55,7 @@
         <activity android:name=".ui.AppAnalyzerActivity" android:exported="false" />
         <activity android:name=".ui.ViewInspectorActivity" android:exported="false" />
         <activity android:name=".ui.LogcatViewerActivity" android:exported="false" />
+        <activity android:name=".diagnostics.DiagnosticsActivity" android:exported="false" android:theme="@style/Theme.CloneMaster" />
         <activity android:name=".environment.EnvironmentDiagnosticsActivity" android:exported="false" />
         <activity android:name=".databundle.FirstRunImportActivity" android:exported="false" android:theme="@style/Theme.CloneMaster" />
         <activity android:name=".privacy.DecoyCalculatorActivity" android:exported="false" android:theme="@style/Theme.CloneMaster.Calculator" />

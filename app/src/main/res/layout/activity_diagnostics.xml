@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/diagTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Diagnostics log"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/diagSubtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Everything Clone-Master did in this session. If something goes wrong, tap SHARE and send the file."
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/diagCrashBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="#33FF5252"
+        android:padding="8dp"
+        android:text="⚠ The last run CRASHED. The crash report is included — tap Share."
+        android:textColor="#FF5252"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/diagSwitchEnabled"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Record diagnostics (activity, options, builds, errors)" />
+
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/diagSwitchVerbose"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Verbose mode (full configs — only when asked by a developer)" />
+
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/diagSwitchRuntimeFile"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Clone runtime file log inside NEW clones (cloner/rt.log)" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp"
+        android:fillViewport="true"
+        android:background="#11000000">
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                android:id="@+id/diagText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:padding="8dp"
+                android:textIsSelectable="true"
+                android:textSize="11sp" />
+        </HorizontalScrollView>
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+
+        <Button
+            android:id="@+id/diagBtnRefresh"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Refresh" />
+
+        <Button
+            android:id="@+id/diagBtnCopy"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Copy" />
+
+        <Button
+            android:id="@+id/diagBtnClear"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Clear" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/diagBtnShare"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="Share full report (send this to the developer)" />
+</LinearLayout>

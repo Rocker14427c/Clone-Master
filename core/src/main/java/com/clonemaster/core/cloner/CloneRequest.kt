@@ -56,5 +56,12 @@ data class CloneRequest(
      * Injected as classes(N+1).dex so the original dex set and order stay
      * untouched (PathClassLoader loads every classes*.dex in the APK).
      */
-    val runtimeDex: ByteArray? = null
+    val runtimeDex: ByteArray? = null,
+    /**
+     * When true (and a runtime is injected), the runtime meta JSON carries
+     * "fileLog":true so the clone mirrors runtime events into
+     * files/cloner/rt.log for logcat-free diagnosis. Default OFF — only ever
+     * present in clones that already carry the optional-feature runtime.
+     */
+    val runtimeFileLog: Boolean = false
 )

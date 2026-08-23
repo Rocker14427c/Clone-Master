@@ -1,10 +1,7 @@
 package com.clonemaster.runtime;
 
-import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
-import android.os.Bundle;
-import android.util.Log;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -33,18 +30,21 @@ public final class RuntimeInit {
             String runtimeJson = readAsset(appContext, "cloner_runtime.json");
             String cloneConfigJson = readAsset(appContext, "clone_config.json");
             RuntimeConfig cfg = RuntimeConfig.parse(runtimeJson, cloneConfigJson);
+            if (cfg.fileLog) RuntimeLog.enableFile(appContext);
             inited = true;
-            Log.i(TAG, "runtime v" + RuntimeConfig.RUNTIME_VERSION + " loaded: pkg="
+            RuntimeLog.i("runtime v" + RuntimeConfig.RUNTIME_VERSION + " loaded: pkg="
                     + appContext.getPackageName()
                     + " original=" + cfg.originalApplication
                     + " screens=" + cfg.disableScreenshots
                     + " awake=" + cfg.keepScreenAwake
-                    + " orient=" + cfg.orientationLock);
+                    + " orient=" + cfg.orientationLock
+                    + " fileLog=" + cfg.fileLog);
             if (cfg.hasActiveFeatures() && appContext instanceof Application) {
                 ((Application) appContext).registerActivityLifecycleCallbacks(new WindowFlagsApplier(cfg));
+                RuntimeLog.i("activity hooks registered");
             }
         } catch (Throwable t) {
-            Log.e(TAG, "runtime init failed – clone continues UNMODIFIED", t);
+            RuntimeLog.e("runtime init failed – clone continues UNMODIFIED", t);
         }
     }
 

@@ -137,6 +137,7 @@ class CloneOptionsActivity : AppCompatActivity() {
             options = filteredOptions,
             configValues = configValues,
             onOptionChanged = { option, newValue ->
+                com.clonemaster.diagnostics.DiagLog.logOptionChanged(option.id, option.configFieldPath, newValue)
                 updateConfigFromOption(option, newValue)
                 // Persist immediately – UI → Configurator → CloneConfig → persistent state
                 configStorage.saveConfiguration(config)
@@ -195,7 +196,11 @@ class CloneOptionsActivity : AppCompatActivity() {
 
         buttonSummaryDetails.setOnClickListener { showDetailedSummaryDialog() }
 
-        buttonBuildClone.setOnClickListener { showCloneSummaryAndBuild() }
+        buttonBuildClone.setOnClickListener {
+            com.clonemaster.diagnostics.DiagLog.i("UI",
+                "user tapped Build Clone for ${config.originalPackage} -> ${config.clonePackage}")
+            showCloneSummaryAndBuild()
+        }
 
         updateCompactSummary()
     }
@@ -437,6 +442,7 @@ class CloneOptionsActivity : AppCompatActivity() {
                 presetUserTouched = false
                 val preset = PresetType.values()[position]
                 if (preset != PresetType.CUSTOM) {
+                    com.clonemaster.diagnostics.DiagLog.i("UI", "user applied preset: ${preset.displayName}")
                     config = PresetManager.applyPreset(config, preset)
                     initializeConfigValues()
                     filteredOptions = if (selectedCategory != null) OptionRegistry.getByCategory(selectedCategory!!) else allOptions

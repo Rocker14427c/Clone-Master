@@ -6,7 +6,9 @@ import androidx.multidex.MultiDexApplication
 class CloneMasterApp : MultiDexApplication() {
     override fun onCreate() {
         super.onCreate()
-        // Init diagnostics, crash reporting, etc
+        // Diagnostics FIRST: persistent on-device log + crash handler so every
+        // later failure is captured into the shareable report.
+        com.clonemaster.diagnostics.DiagLog.init(this)
         // Load native libs if present
         try {
             System.loadLibrary("appcloner")

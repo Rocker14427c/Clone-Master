@@ -180,11 +180,12 @@ class AppCloneBuilder {
             val runtimeDexName = "classes${dexEntries.size + 1}.dex"
             additions[runtimeDexName] = runtimeDex
             val orig = manifestResult.originalApplication
-            val meta = if (orig != null) {
-                "{\"originalApplication\":\"$orig\",\"runtimeVersion\":1}"
-            } else {
-                "{\"originalApplication\":null,\"runtimeVersion\":1}"
-            }
+            val origJson = if (orig != null) "\"$orig\"" else "null"
+            // runtimeVersion 2: adds optional "fileLog" key. The key is only
+            // emitted when enabled so a default request produces the minimal
+            // (pre-v2-compatible shape) meta payload.
+            val fileLogJson = if (request.runtimeFileLog) ",\"fileLog\":true" else ""
+            val meta = "{\"originalApplication\":$origJson,\"runtimeVersion\":2$fileLogJson}"
             additions["assets/cloner_runtime.json"] = meta.toByteArray(Charsets.UTF_8)
             diag.log("Runtime injected: application wrapped (original=${orig ?: "none"}), $runtimeDexName (${runtimeDex.size} bytes), assets/cloner_runtime.json written")
         }

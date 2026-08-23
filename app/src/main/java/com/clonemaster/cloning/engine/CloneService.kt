@@ -46,6 +46,7 @@ class CloneService : Service() {
                     .build()
                 nm.notify(1, updated)
             }.onSuccess { apk ->
+                com.clonemaster.diagnostics.DiagLog.i("Service", "foreground clone finished: ${apk.absolutePath}")
                 stopForeground(true)
                 stopSelf()
                 // Broadcast success
@@ -53,6 +54,7 @@ class CloneService : Service() {
                     putExtra("apk", apk.absolutePath)
                 })
             }.onFailure { e ->
+                com.clonemaster.diagnostics.DiagLog.e("Service", "foreground clone failed: ${e.message}", e)
                 stopForeground(true)
                 stopSelf()
                 sendBroadcast(Intent("com.clonemaster.CLONE_FAILED").apply {

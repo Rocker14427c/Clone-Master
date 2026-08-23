@@ -54,6 +54,21 @@ public class RuntimeConfigTest {
     }
 
     @Test
+    public void fileLogDefaultsFalseForV1Meta() {
+        RuntimeConfig cfg = RuntimeConfig.parse(RUNTIME_META, null);
+        assertFalse(cfg.fileLog);
+    }
+
+    @Test
+    public void fileLogParsedFromV2Meta() {
+        String metaV2 =
+                "{\"originalApplication\":\"mark.via.gp.ViaApplication\",\"runtimeVersion\":2,\"fileLog\":true}";
+        RuntimeConfig cfg = RuntimeConfig.parse(metaV2, null);
+        assertEquals("mark.via.gp.ViaApplication", cfg.originalApplication);
+        assertTrue(cfg.fileLog);
+    }
+
+    @Test
     public void malformedJsonDegradesToDefaults() {
         RuntimeConfig cfg = RuntimeConfig.parse("{broken", "{\"privacy\": null}");
         assertNull(cfg.originalApplication);

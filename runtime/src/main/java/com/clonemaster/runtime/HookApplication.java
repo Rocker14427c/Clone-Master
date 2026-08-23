@@ -4,7 +4,6 @@ import android.app.Application;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.res.Configuration;
-import android.util.Log;
 
 import java.lang.reflect.Method;
 
@@ -44,11 +43,11 @@ public class HookApplication extends Application {
                     Method m = ContextWrapper.class.getDeclaredMethod("attachBaseContext", Context.class);
                     m.setAccessible(true);
                     m.invoke(original, base);
-                    Log.i(RuntimeInit.TAG, "original application attached: " + origName);
+                    RuntimeLog.i("original application attached: " + origName);
                 }
             }
         } catch (Throwable t) {
-            Log.e(RuntimeInit.TAG, "original application wrap failed – clone continues WITHOUT original app class", t);
+            RuntimeLog.e("original application wrap failed – clone continues WITHOUT original app class", t);
             original = null;
         }
         RuntimeInit.init(base);
@@ -61,7 +60,7 @@ public class HookApplication extends Application {
             try {
                 original.onCreate();
             } catch (Throwable t) {
-                Log.e(RuntimeInit.TAG, "original onCreate failed", t);
+                RuntimeLog.e("original onCreate failed", t);
             }
         }
     }

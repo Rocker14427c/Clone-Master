@@ -220,6 +220,7 @@ class MainActivity : AppCompatActivity() {
             "Pick APK File from Storage",
             "Batch Clone Installed App",
             "Environment Diagnostics",
+            "Diagnostics Log (view/share)",
             "Refresh App List"
         )
 
@@ -234,6 +235,9 @@ class MainActivity : AppCompatActivity() {
                         startActivity(intent)
                     }
                     3 -> {
+                        startActivity(Intent(this, com.clonemaster.diagnostics.DiagnosticsActivity::class.java))
+                    }
+                    4 -> {
                         loadApps()
                         loadClones()
                     }

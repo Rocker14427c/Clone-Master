@@ -25,7 +25,8 @@ import org.json.JSONObject;
  */
 public final class RuntimeConfig {
 
-    public static final int RUNTIME_VERSION = 1;
+    /** v2: meta JSON may carry "fileLog" (clone-side runtime file logging). */
+    public static final int RUNTIME_VERSION = 2;
 
     /** Never null; null means "no original Application android:name". */
     public final String originalApplication;
@@ -36,15 +37,19 @@ public final class RuntimeConfig {
     public final boolean keepScreenAwake;
     /** -1 when no orientation override is configured. */
     public final int orientationLock;
+    /** When true, the runtime mirrors its log lines into files/cloner/rt.log. */
+    public final boolean fileLog;
 
     private RuntimeConfig(String originalApplication, String clonePackage, String appName,
-                          boolean disableScreenshots, boolean keepScreenAwake, int orientationLock) {
+                          boolean disableScreenshots, boolean keepScreenAwake, int orientationLock,
+                          boolean fileLog) {
         this.originalApplication = originalApplication;
         this.clonePackage = clonePackage;
         this.appName = appName;
         this.disableScreenshots = disableScreenshots;
         this.keepScreenAwake = keepScreenAwake;
         this.orientationLock = orientationLock;
+        this.fileLog = fileLog;
     }
 
     /** Null-safe parse; any malformed/missing input yields a config with all features OFF. */
@@ -55,11 +60,13 @@ public final class RuntimeConfig {
         boolean disableScreenshots = false;
         boolean keepScreenAwake = false;
         int orientationLock = -1;
+        boolean fileLog = false;
         try {
             if (runtimeJson != null) {
                 JSONObject meta = new JSONObject(runtimeJson);
                 original = meta.optString("originalApplication", null);
                 if (original != null && original.isEmpty()) original = null;
+                fileLog = meta.optBoolean("fileLog", false);
             }
         } catch (Throwable ignored) { /* fail-soft: defaults */ }
         try {
@@ -79,7 +86,7 @@ public final class RuntimeConfig {
             }
         } catch (Throwable ignored) { /* fail-soft: defaults */ }
         return new RuntimeConfig(original, clonePackage, appName,
-                disableScreenshots, keepScreenAwake, orientationLock);
+                disableScreenshots, keepScreenAwake, orientationLock, fileLog);
     }
 
     /**

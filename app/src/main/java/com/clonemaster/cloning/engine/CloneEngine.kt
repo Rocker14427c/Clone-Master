@@ -7,6 +7,7 @@ import com.clonemaster.cloning.models.CompatibilityReport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.clonemaster.diagnostics.DiagLog
 
 /**
  * Main cloning engine – orchestrates entire pipeline.
@@ -40,7 +41,10 @@ class CloneEngine(private val context: Context) {
     suspend fun clone(config: CloneConfig, onProgress: (String) -> Unit = {}): Result<File> = withContext(Dispatchers.IO) {
         try {
             diagnostics.clear()
-            onProgress("Starting clone for ${config.originalPackage} -> ${config.clonePackage}")
+            DiagLog.logCloneStart(config.originalPackage, config.clonePackage,
+                OptionalFeatures.anyEnabled(config), gsonConfig(config))
+            val progress: (String) -> Unit = { msg -> DiagLog.i("Clone", msg); onProgress(msg) }
+            progress("Starting clone for ${config.originalPackage} -> ${config.clonePackage}")
 
             // Step 0: Prepare temp dirs
             val workDir = File(context.cacheDir, "clone_${System.currentTimeMillis()}")
@@ -50,7 +54,7 @@ class CloneEngine(private val context: Context) {
             buildDir.mkdirs()
 
             // Step 1: apktool decode
-            onProgress("Decoding APK...")
+            progress("Decoding APK...")
             val apkPath = getApkPath(config.originalPackage)
             if (!apkPath.exists()) throw IllegalStateException("APK not found: ${config.originalPackage}")
 
@@ -71,7 +75,7 @@ class CloneEngine(private val context: Context) {
             }
 
             // Step 2: Manifest transform – independent implementation, functional parity with public feature reference
-            onProgress("Transforming manifest...")
+            progress("Transforming manifest...")
             val manifestFile = File(decodedDir, "AndroidManifest.xml")
             if (!manifestFile.exists()) throw IllegalStateException("AndroidManifest.xml not found after decode")
             val manifestResult = manifestTransformer.transform(manifestFile, config)
@@ -101,21 +105,21 @@ class CloneEngine(private val context: Context) {
             }
 
             // Step 3: Resource transform
-            onProgress("Transforming resources...")
+            progress("Transforming resources...")
             val resDir = File(decodedDir, "res")
             if (resDir.exists()) resourceTransformer.transform(resDir, config, diagnostics)
 
             // Step 4: Dex / smali transform
-            onProgress("Transforming DEX...")
+            progress("Transforming DEX...")
             dexTransformer.transform(decodedDir, config, manifestResult.authorityMap, diagnostics)
 
             // Step 5: Native libs
-            onProgress("Handling native libs...")
+            progress("Handling native libs...")
             val libDir = File(decodedDir, "lib")
             nativeHandler.handle(libDir, config, diagnostics)
 
             // Step 6: Bundle clone_config.json + environment + device profile into assets
-            onProgress("Bundling config & environment...")
+            progress("Bundling config & environment...")
             val assetsDir = File(decodedDir, "assets")
             assetsDir.mkdirs()
             val configJson = gsonConfig(config)
@@ -149,7 +153,7 @@ class CloneEngine(private val context: Context) {
             var dataArchiveFile: File? = null
             var dataManifest: com.clonemaster.cloning.models.DataBundleManifest? = null
             if (config.dataBundle.enabled) {
-                onProgress("Analyzing app data for bundling...")
+                progress("Analyzing app data for bundling...")
                 try {
                     val dataAnalyzer = com.clonemaster.databundle.DataBundleAnalyzer(context)
                     val analysis = dataAnalyzer.analyze(config.originalPackage)
@@ -169,7 +173,7 @@ class CloneEngine(private val context: Context) {
                     }
 
                     if (filteredFiles.isNotEmpty()) {
-                        onProgress("Bundling ${filteredFiles.size} data directories...")
+                        progress("Bundling ${filteredFiles.size} data directories...")
                         val dataBundleDir = File(workDir, "data_bundle")
                         dataBundleDir.mkdirs()
 
@@ -198,7 +202,7 @@ class CloneEngine(private val context: Context) {
                             metadata = metadata,
                             config = config.dataBundle,
                             outputDir = dataBundleDir,
-                            onProgress = { msg -> onProgress(msg); diagnostics.log(msg) }
+                            onProgress = { msg -> progress(msg); diagnostics.log(msg) }
                         )
 
                         dataArchiveFile = archive
@@ -206,7 +210,7 @@ class CloneEngine(private val context: Context) {
 
                         // Embed or package as associated payload
                         if (config.dataBundle.embedInApk) {
-                            onProgress("Embedding data archive into APK assets...")
+                            progress("Embedding data archive into APK assets...")
                             // Copy archive into assets/data/
                             val assetsDataDir = File(assetsDir, "data")
                             assetsDataDir.mkdirs()
@@ -250,7 +254,7 @@ class CloneEngine(private val context: Context) {
             }
 
             // Step 8: apktool build
-            onProgress("Building APK...")
+            progress("Building APK...")
             val unsignedApk = File(buildDir, "unsigned.apk")
             if (apktool != null) {
                 val proc = ProcessBuilder(apktool, "b", decodedDir.absolutePath, "-o", unsignedApk.absolutePath)
@@ -265,7 +269,7 @@ class CloneEngine(private val context: Context) {
             }
 
             // Step 9: Signing
-            onProgress("Signing APK...")
+            progress("Signing APK...")
             val signedDir = File(context.filesDir, "signed")
             val keystore = getOrCreateKeystore()
             val signResult = signingPipeline.sign(unsignedApk, signedDir, keystore)
@@ -293,12 +297,12 @@ class CloneEngine(private val context: Context) {
                     outputDir = outputDir,
                     encrypt = config.dataBundle.encryption != com.clonemaster.cloning.models.EncryptionType.NONE,
                     password = config.dataBundle.encryptionPassword,
-                    onProgress = { msg -> onProgress(msg) }
+                    onProgress = { msg -> progress(msg) }
                 )
                 diagnostics.log("Created combined backup package: ${combinedPackage.absolutePath}")
             }
 
-            onProgress("Clone complete: ${finalApk.absolutePath}" + (finalDataFile?.let { " + ${it.name}" } ?: ""))
+            progress("Clone complete: ${finalApk.absolutePath}" + (finalDataFile?.let { " + ${it.name}" } ?: ""))
 
             // Save config for backup/restore
             saveCloneConfig(config)
@@ -314,8 +318,12 @@ class CloneEngine(private val context: Context) {
                 } catch (ignored: Exception) {}
             }
 
+            DiagLog.logCloneResult(true, "${finalApk.name} (${finalApk.length()} bytes)")
+            flushEngineDiagnostics()
             Result.success(finalApk)
         } catch (e: Exception) {
+            DiagLog.logCloneResult(false, "${e.javaClass.simpleName}: ${e.message}")
+            flushEngineDiagnostics()
             diagnostics.error("Clone failed: ${e.message}")
             e.printStackTrace()
             Result.failure(e)
@@ -330,13 +338,14 @@ class CloneEngine(private val context: Context) {
      */
     private suspend fun cloneNative(config: CloneConfig, onProgress: (String) -> Unit, apkPath: File): Result<File> = withContext(Dispatchers.IO) {
         try {
-            onProgress("Native clone build (no apktool on device)...")
+            val progress: (String) -> Unit = { msg -> DiagLog.i("Clone", msg); onProgress(msg) }
+            progress("Native clone build (no apktool on device)...")
             val apkBytes = apkPath.readBytes()
             if (apkBytes.isEmpty()) throw IllegalStateException("Source APK is empty: ${apkPath.absolutePath}")
 
             val featuresEnabled = OptionalFeatures.anyEnabled(config)
             if (featuresEnabled) {
-                onProgress("Runtime features enabled – injecting clone runtime...")
+                progress("Runtime features enabled – injecting clone runtime...")
             }
 
             // General options reach the native pipeline here. Version overrides
@@ -380,9 +389,10 @@ class CloneEngine(private val context: Context) {
                 versionCodeOverride = versionCodeOverride,
                 removeBranding = config.removeBranding,
                 wrapApplication = featuresEnabled,
-                runtimeDex = runtimeDex
+                runtimeDex = runtimeDex,
+                runtimeFileLog = DiagLog.isRuntimeFileLog()
             )
-            onProgress("Transforming manifest & DEX...")
+            progress("Transforming manifest & DEX...")
             val builder = com.clonemaster.core.cloner.AppCloneBuilder()
             val material = loadOrCreateSignMaterial()
             val product = builder.build(apkBytes, request, material)
@@ -391,16 +401,20 @@ class CloneEngine(private val context: Context) {
             product.diag.errors.forEach { diagnostics.error("native: $it") }
             if (product.diag.hasErrors) throw IllegalStateException("Native clone failed validation: ${product.diag.errors.joinToString(" | ")}")
 
-            onProgress("Writing output APK...")
+            progress("Writing output APK...")
             val outputDir = File(context.getExternalFilesDir(null), "clones")
             outputDir.mkdirs()
             val finalApk = File(outputDir, "${config.clonePackage}_${config.versionName}.apk")
             finalApk.writeBytes(product.apk)
             diagnostics.log("Native clone complete: ${finalApk.absolutePath} (${finalApk.length()} bytes, v2-signed, validated)")
             saveCloneConfig(config)
-            onProgress("Clone complete: ${finalApk.absolutePath}")
+            progress("Clone complete: ${finalApk.absolutePath}")
+            DiagLog.logCloneResult(true, "${finalApk.name} (${finalApk.length()} bytes) [native]")
+            flushEngineDiagnostics()
             Result.success(finalApk)
         } catch (e: Exception) {
+            DiagLog.logCloneResult(false, "native: ${e.javaClass.simpleName}: ${e.message}")
+            flushEngineDiagnostics()
             diagnostics.error("Native clone failed: ${e.message}")
             e.printStackTrace()
             Result.failure(e)
@@ -566,6 +580,19 @@ class CloneEngine(private val context: Context) {
             val file = File(dir, "${config.clonePackage}.json")
             file.writeText(gsonConfig(config))
         } catch (ignored: Exception) {}
+    }
+
+    /** Mirrors the collected per-clone diagnostics into the persistent device log. */
+    private fun flushEngineDiagnostics() {
+        try {
+            diagnostics.getLogs().takeLast(400).forEach {
+                when (it.level) {
+                    CloningDiagnostics.Level.ERROR -> DiagLog.e("Engine", it.message)
+                    CloningDiagnostics.Level.WARN -> DiagLog.w("Engine", it.message)
+                    else -> DiagLog.d("Engine", it.message)
+                }
+            }
+        } catch (ignored: Throwable) {}
     }
 
     fun getDiagnostics(): CloningDiagnostics = diagnostics

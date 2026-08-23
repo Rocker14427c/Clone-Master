@@ -82,8 +82,10 @@ class BuildProgressActivity : AppCompatActivity() {
                     exportDir?.mkdirs()
                     val exportFile = File(exportDir, apk.name)
                     apk.copyTo(exportFile, overwrite = true)
+                    com.clonemaster.diagnostics.DiagLog.i("Export", "APK exported to ${exportFile.absolutePath}")
                     android.widget.Toast.makeText(this, "Exported to ${exportFile.absolutePath}", android.widget.Toast.LENGTH_LONG).show()
                 } catch (ignored: Exception) {
+                    com.clonemaster.diagnostics.DiagLog.e("Export", "export failed: ${ignored.message}", ignored)
                     android.widget.Toast.makeText(this, "Export failed: ${ignored.message}", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
@@ -189,6 +191,7 @@ class BuildProgressActivity : AppCompatActivity() {
                     when (status) {
                         PackageInstaller.STATUS_SUCCESS -> {
                             textDetail.text = "Installed successfully (PackageInstaller OK)."
+                            com.clonemaster.diagnostics.DiagLog.logInstall("SUCCESS", config.clonePackage)
                             Toast.makeText(this@BuildProgressActivity, "Clone installed ✓", Toast.LENGTH_LONG).show()
                         }
                         else -> {
@@ -196,6 +199,7 @@ class BuildProgressActivity : AppCompatActivity() {
                             val statusText = statusText(status)
                             textDetail.text = "Install FAILED ($statusText): $msg — the generated APK was rejected by the device."
                             textLog.append("\n[Install] FAILED ($statusText): $msg\n")
+                            com.clonemaster.diagnostics.DiagLog.logInstall(statusText, "$msg (package=${config.clonePackage})")
                             android.util.Log.e("CloneMaster", "PackageInstaller FAILED status=$status msg=$msg")
                         }
                     }

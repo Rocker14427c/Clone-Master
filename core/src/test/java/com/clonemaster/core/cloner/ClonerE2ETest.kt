@@ -600,6 +600,27 @@ class ClonerE2ETest {
     }
 
     @Test
+    fun `runtimeFileLog adds fileLog flag and v2 version to runtime meta`() {
+        val src = buildRuntimeApk(withAppName = true)
+        val request = CloneRequest(ORIG, CLONE, wrapApplication = true, runtimeDex = fakeRuntimeDex(), runtimeFileLog = true)
+        val product = AppCloneBuilder().build(src, request)
+        assertFalse("build must succeed: ${product.diag.errors}", product.diag.hasErrors)
+        val meta = String(entryData(ZipIO.read(product.apk).first { it.name == "assets/cloner_runtime.json" }))
+        assertTrue("fileLog flag expected: $meta", meta.contains("\"fileLog\":true"))
+        assertTrue("runtimeVersion 2 expected: $meta", meta.contains("\"runtimeVersion\":2"))
+    }
+
+    @Test
+    fun `runtimeFileLog OFF keeps meta minimal`() {
+        val src = buildRuntimeApk(withAppName = true)
+        val request = CloneRequest(ORIG, CLONE, wrapApplication = true, runtimeDex = fakeRuntimeDex()) // runtimeFileLog=false
+        val product = AppCloneBuilder().build(src, request)
+        assertFalse("build must succeed: ${product.diag.errors}", product.diag.hasErrors)
+        val meta = String(entryData(ZipIO.read(product.apk).first { it.name == "assets/cloner_runtime.json" }))
+        assertFalse("no fileLog key by default: $meta", meta.contains("fileLog"))
+    }
+
+    @Test
     fun `wrap without runtime dex fails closed`() {
         val src = buildRuntimeApk(withAppName = true)
         try {
