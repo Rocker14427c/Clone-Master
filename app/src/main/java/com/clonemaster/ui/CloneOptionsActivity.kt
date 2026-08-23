@@ -337,7 +337,8 @@ class CloneOptionsActivity : AppCompatActivity() {
                 "environment.physicalDeviceProfileId" -> config.environment.physicalDeviceProfileId = newValue as String
 
                 "display.darkMode" -> config.display.darkMode = try { DarkMode.valueOf(newValue as String) } catch (ignored: Exception) { DarkMode.SYSTEM }
-                "display.orientationLock" -> config.display.orientationLock = (newValue as String).toIntOrNull() ?: -1
+                "display.orientationLock" -> config.display.orientationLock =
+                    OptionValueParsers.parseOrientation(newValue as String)
                 "display.immersiveFullscreen" -> config.display.immersiveFullscreen = newValue as Boolean
                 "display.keepScreenAwake" -> config.display.keepScreenAwake = newValue as Boolean
                 "display.customLanguage" -> { config.display.customLanguage = newValue as String; config.parityFeatures.locale.customLocale = newValue as String }
@@ -410,14 +411,30 @@ class CloneOptionsActivity : AppCompatActivity() {
         }
     }
 
+    private var presetUserTouched = false
+
     private fun setupPresets() {
         val presetNames = PresetType.values().map { "${it.displayName} – ${it.description}" }
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, presetNames)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         presetSpinner.adapter = adapter
 
+        // CRITICAL (device-verified bug): AdapterView.onItemSelected FIRES
+        // PROGRAMMATICALLY — on first layout and on every state re-dispatch.
+        // Position 0 is the DEFAULT preset ("all optional features OFF"), so
+        // each programmatic fire silently reset every option the user enabled —
+        // reported on-device as "when I enable option B, option A turns off".
+        // A preset may ONLY be applied for a real user touch; everything else
+        // (bind/restore/re-layout fires) must leave config + configValues alone.
+        presetSpinner.setOnTouchListener { _, ev ->
+            if (ev?.action == android.view.MotionEvent.ACTION_DOWN) presetUserTouched = true
+            false
+        }
+
         presetSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (!presetUserTouched) return // programmatic fire – never mutate state
+                presetUserTouched = false
                 val preset = PresetType.values()[position]
                 if (preset != PresetType.CUSTOM) {
                     config = PresetManager.applyPreset(config, preset)

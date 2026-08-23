@@ -652,4 +652,36 @@ class ClonerE2ETest {
         assertEquals("$CLONE.MyApp", appName) // renamed original, NOT the wrapper
         assertTrue(ApkValidator().validate(product.apk, request).ok)
     }
+
+    // ------------------------------------------------ P0-2.1 signature-string regression (device crash)
+
+    @Test
+    fun `embedded descriptors inside generic Signature strings are rewritten`() {
+        val rw = DexPackageRewriter(ORIG, CLONE, emptyMap())
+        // gson/jackson-style generic of a field: List<models.Foo> from the original package
+        val sigIn = "Ljava/util/List<Lcom/example/test/models/AutoPressRule;>;"
+        val sigOut = rw.rewriteString(sigIn)
+        assertEquals("Ljava/util/List<L${
+            CLONE.replace('.', '/')}/models/AutoPressRule;>;", sigOut)
+        // pure descriptor string (Class.forName-style)
+        assertEquals("L${CLONE.replace('.', '/')}/Foo;", rw.rewriteString("Lcom/example/test/Foo;"))
+        // method generic with two descriptors
+        val mIn = "(Lcom/example/test/A;Ljava/lang/String;Lcom/example/test/B;)V"
+        assertEquals("(L${CLONE.replace('.', '/')}/A;Ljava/lang/String;L${CLONE.replace('.', '/')}/B;)V",
+            rw.rewriteString(mIn))
+        // untouched: third-party + plain text
+        assertEquals(null, rw.rewriteString("Lcom/other/lib/Foo;"))
+        assertEquals(null, rw.rewriteString("some user text about com/example paths"))
+        assertEquals(null, rw.rewriteString("java.util.List<kotlin.String>"))
+    }
+
+    @Test
+    fun `round trip - dex carrying a Signature-like const string no longer references old package`() {
+        val sig = "Ljava/util/List<Lcom/example/test/models/AutoPressRule;>;"
+        val dex = buildRealDex("Lcom/example/test/models/AutoPressRule;", strings = listOf(sig))
+        val r = DexPackageRewriter(ORIG, CLONE, emptyMap()).rewrite(dex)
+        val body = r.dex.toString(Charsets.ISO_8859_1)
+        assertTrue("new package must be present in signature", body.contains("Lcom/example/test/clone1/models/AutoPressRule;"))
+        assertFalse("no residual old package anywhere", body.contains("Lcom/example/test/models"))
+    }
 }

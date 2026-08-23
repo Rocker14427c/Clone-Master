@@ -134,11 +134,23 @@ class OptionsAdapter(
                     spinner.adapter = adapter
 
                     val current = currentValue?.toString() ?: ""
-                    val selectedIndex = values.indexOfFirst { it.equals(current, true) }.takeIf { it >= 0 } ?: 0
+                    val selectedIndex = if (option.configFieldPath == "display.orientationLock") {
+                        // stored value is a raw int ("1"), labels are "Portrait (1)" …
+                        com.clonemaster.ui.OptionValueParsers.orientationIndex(current)
+                    } else {
+                        values.indexOfFirst { it.equals(current, true) }.takeIf { it >= 0 } ?: 0
+                    }
                     spinner.setSelection(selectedIndex)
 
+                    // RecyclerView rows rebind often; setSelection() fires
+                    // onItemSelected programmatically on the next loop pass.
+                    // Swallow exactly that bind-fire or it re-saves a
+                    // (possibly default) value for an option the user never
+                    // touched — the dropdown equivalent of the preset bug.
+                    var bindGuard = true
                     spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                         override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                            if (bindGuard) { bindGuard = false; return }
                             val newValue = values[pos]
                             configValues[option.configFieldPath] = newValue
                             onOptionChanged(option, newValue)
@@ -190,7 +202,7 @@ class OptionsAdapter(
         return when {
             option.configFieldPath.contains("iconBadge") -> listOf("NONE", "NUMBER", "DOT", "CUSTOM_TEXT")
             option.configFieldPath.contains("darkMode") -> listOf("LIGHT", "DARK", "SYSTEM", "FORCE_DARK")
-            option.configFieldPath.contains("orientationLock") -> listOf("Default (-1)", "Portrait (1)", "Landscape (0)", "Sensor (4)")
+            option.configFieldPath.contains("orientationLock") -> com.clonemaster.ui.OptionValueParsers.ORIENTATION_LABELS
             option.configFieldPath.contains("appCategory") -> listOf("undefined", "game", "audio", "video", "image", "social", "news", "maps", "productivity")
             option.configFieldPath.contains("compression") -> listOf("NONE", "ZIP", "GZIP", "ZSTD")
             option.configFieldPath.contains("encryption") -> listOf("NONE", "AES256", "CHACHA20")

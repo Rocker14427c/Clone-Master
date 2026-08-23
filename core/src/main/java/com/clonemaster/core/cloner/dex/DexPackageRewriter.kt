@@ -139,6 +139,20 @@ class DexPackageRewriter(
                 return newPackage + rest
             }
         }
+        // Embedded-descriptor rule (REGRESSION FIX – device crash):
+        // generic Signature annotations and reflection lookups embed ONE OR MORE
+        // descriptors inside a larger string, e.g.
+        //   "Ljava/util/List<Lcom/pkg/models/Foo;>;"        (Kotlin/Java generic of a field)
+        //   "(Lcom/pkg/A;Ljava/lang/String;)V"              (method generic)
+        //   "Lcom/pkg/Foo;"                                 (Class.forName descriptor)
+        // The exact/prefix rules above cannot match these, so reflection
+        // (Gson/Jackson/Moshi/Room/Retrofit…) resolved the OLD name at runtime:
+        // ClassNotFoundException / TypeNotPresentException inside clones.
+        // Rule: every "L<origSlash>/" occurrence is rewritten to the clone slug.
+        // Only the descriptor form ("L"+slug+"/") matches, plain text is untouched.
+        if (s.contains("L$origPrefix")) {
+            return s.replace("L$origPrefix", "L$newPrefix")
+        }
         return null
     }
 
