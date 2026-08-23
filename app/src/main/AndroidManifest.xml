@@ -37,7 +37,10 @@
         android:theme="@style/Theme.CloneMaster"
         android:requestLegacyExternalStorage="true"
         android:extractNativeLibs="true"
-        android:largeHeap="true">
+        android:largeHeap="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:resizeableActivity="true"
+        android:supportsRtl="true">
 
         <activity
             android:name=".ui.MainActivity"
@@ -47,6 +50,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
 
         <activity android:name=".ui.CloneConfigActivity" android:exported="false" />

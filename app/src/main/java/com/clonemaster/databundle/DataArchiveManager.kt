@@ -114,9 +114,14 @@ class DataArchiveManager(private val context: Context) {
                 CompressionType.ZIP, CompressionType.NONE -> createZipArchive(tempArchive, allFiles, selectedFiles, fileEntries, checksums, onProgress, config)
                 CompressionType.GZIP -> createGzipArchive(tempArchive, allFiles, selectedFiles, fileEntries, checksums, onProgress, config)
                 CompressionType.ZSTD -> {
-                    // QA: Document as placeholder – real would use zstd-jni, for now use ZIP with best compression
-                    android.util.Log.w("CloneMaster", "ZSTD compression requested but zstd-jni not available – using ZIP BEST_COMPRESSION as fallback (IMPLEMENTED BUT NOT RUNTIME VERIFIED for ZSTD)")
-                    createZipArchive(tempArchive, allFiles, selectedFiles, fileEntries, checksums, onProgress, config)
+                    // Use zstd-jni for real Zstandard compression
+                    try {
+                        createZstdArchive(tempArchive, allFiles, selectedFiles, fileEntries, checksums, onProgress, config)
+                        android.util.Log.i("CloneMaster", "Created ZSTD archive: ${tempArchive.length()} bytes")
+                    } catch (e: Exception) {
+                        android.util.Log.w("CloneMaster", "ZSTD compression failed: ${e.message}, falling back to ZIP", e)
+                        createZipArchive(tempArchive, allFiles, selectedFiles, fileEntries, checksums, onProgress, config)
+                    }
                 }
             }
 
@@ -217,6 +222,79 @@ class DataArchiveManager(private val context: Context) {
                 zos.closeEntry()
             }
         }
+    }
+
+    private fun createZstdArchive(
+        output: File,
+        allFiles: List<File>,
+        rootDirs: List<File>,
+        entries: MutableList<DataBundleFileEntry>,
+        checksums: MutableMap<String, String>,
+        onProgress: (String) -> Unit,
+        config: DataBundleConfig
+    ) {
+        // Use zstd-jni for real Zstandard compression
+        val zstdOutputStream = com.github.luben.zstd.ZstdOutputStream(BufferedOutputStream(FileOutputStream(output)), 19)
+        zstdOutputStream.use { zos ->
+            // Write a simple format: for each file, write [path_len:4][path][size:8][data]
+            allFiles.forEachIndexed { index, file ->
+                if (index % 100 == 0) onProgress("Compressing ${index}/${allFiles.size}: ${file.name}")
+
+                val root = rootDirs.find { file.canonicalPath.startsWith(it.canonicalPath) } ?: rootDirs.firstOrNull()
+                if (root == null) {
+                    android.util.Log.w("CloneMaster", "Skipping file not inside allowed roots: ${file.canonicalPath}")
+                    return@forEachIndexed
+                }
+
+                var relative = file.relativeTo(root).path
+                if (relative.contains("..") || relative.startsWith("/") || relative.contains("\\")) {
+                    android.util.Log.w("CloneMaster", "Skipping file with suspicious relative path: $relative")
+                    return@forEachIndexed
+                }
+
+                val archivePath = "$DATA_DIR/$relative"
+                val fileBytes = file.readBytes()
+                val checksum = calculateSha256(fileBytes)
+                checksums[archivePath] = checksum
+
+                entries.add(DataBundleFileEntry(
+                    path = relative,
+                    archivePath = archivePath,
+                    size = fileBytes.size.toLong(),
+                    checksum = checksum,
+                    category = detectCategory(file, rootDirs)
+                ))
+
+                // Write entry: path length (4 bytes) + path + file size (8 bytes) + file data
+                val pathBytes = archivePath.toByteArray(Charsets.UTF_8)
+                zos.write(intToBytes(pathBytes.size))
+                zos.write(pathBytes)
+                zos.write(longToBytes(fileBytes.size.toLong()))
+                zos.write(fileBytes)
+            }
+        }
+    }
+
+    private fun intToBytes(value: Int): ByteArray {
+        return byteArrayOf(
+            (value >> 24).toByte(),
+            (value >> 16).toByte(),
+            (value >> 8).toByte(),
+            value.toByte()
+        )
+    }
+
+    private fun longToBytes(value: Long): ByteArray {
+        return byteArrayOf(
+            (value >> 56).toByte(),
+            (value >> 48).toByte(),
+            (value >> 40).toByte(),
+            (value >> 32).toByte(),
+            (value >> 24).toByte(),
+            (value >> 16).toByte(),
+            (value >> 8).toByte(),
+            value.toByte()
+        )
     }
 
     private fun createGzipArchive(

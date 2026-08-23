@@ -39,8 +39,25 @@ class ProxyManager(private val context: Context) {
         }
 
         try {
+            // Extract microsocks from assets if not already present
             if (!microsocksBin.exists()) {
-                android.util.Log.w("CloneMaster", "microsocks binary not found at ${microsocksBin.absolutePath} – proxy will use system properties hook instead (degraded functionality, IMPLEMENTED BUT NOT RUNTIME VERIFIED without binary)")
+                val assetPath = "microsocks/$abi/microsocks"
+                try {
+                    context.assets.open(assetPath).use { input ->
+                        microsocksBin.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    microsocksBin.setExecutable(true, false)
+                    microsocksBin.setReadable(true, false)
+                    android.util.Log.i("CloneMaster", "Extracted microsocks binary to ${microsocksBin.absolutePath}")
+                } catch (e: Exception) {
+                    android.util.Log.w("CloneMaster", "Failed to extract microsocks from assets: ${e.message}")
+                }
+            }
+
+            if (!microsocksBin.exists()) {
+                android.util.Log.w("CloneMaster", "microsocks binary not found – proxy will not start")
                 return
             }
 
@@ -59,7 +76,29 @@ class ProxyManager(private val context: Context) {
                     android.util.Log.w("CloneMaster", "Invalid proxy port: $port")
                     return
                 }
-                android.util.Log.d("CloneMaster", "Would start microsocks: ${microsocksBin.absolutePath} -i 127.0.0.1 -p 1080 -s $host -P $port")
+
+                // Start microsocks process
+                val command = listOf(
+                    microsocksBin.absolutePath,
+                    "-i", "127.0.0.1",
+                    "-p", "1080",
+                    "-s", host,
+                    "-P", port
+                )
+                android.util.Log.d("CloneMaster", "Starting microsocks: ${command.joinToString(" ")}")
+
+                proxyProcess = ProcessBuilder(command)
+                    .redirectErrorStream(true)
+                    .start()
+
+                // Give it a moment to start
+                Thread.sleep(100)
+
+                if (proxyProcess?.isAlive == true) {
+                    android.util.Log.i("CloneMaster", "microsocks started successfully on 127.0.0.1:1080 -> $host:$port")
+                } else {
+                    android.util.Log.e("CloneMaster", "microsocks failed to start")
+                }
             }
 
             if (config.dnsOverHttps.isNotEmpty()) {

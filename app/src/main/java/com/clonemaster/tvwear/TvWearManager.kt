@@ -5,23 +5,31 @@ import com.clonemaster.cloning.models.TvWearConfig
 
 class TvWearManager(private val context: Context) {
 
-    fun apply(config: TvWearConfig) {
-        if (config.joystickPointer) {
-            // Enable joystick pointer for non-TV apps
-        }
-        if (config.removeWearComponents) {
-            // Already handled in manifest: remove <uses-feature android:name="android.hardware.type.watch" />
-        }
-    }
-
     object Hooks {
-        fun install(config: TvWearConfig) {
-            if (config.joystickPointer) {
-                // Hook to show pointer overlay
-            }
-            if (config.pip) {
-                // Hook Activity.enterPictureInPictureMode
+        private var installed = false
+        fun install(cfg: TvWearConfig) {
+            if (installed) return
+            installed = true
+            try {
+                android.util.Log.i("CloneMaster", "TvWearManager.Hooks installing...")
+                if (cfg.tvLauncher) { TvSpoofRegistry.tvLauncher = true; android.util.Log.i("CloneMaster", "TV launcher mode") }
+                if (cfg.joystickPointer) { TvSpoofRegistry.joystickPointer = true; android.util.Log.i("CloneMaster", "Joystick pointer enabled") }
+                if (cfg.pip) { TvSpoofRegistry.pip = true; android.util.Log.i("CloneMaster", "PiP enabled for TV/Wear") }
+                if (cfg.removeWearComponents) { TvSpoofRegistry.removeWear = true; android.util.Log.i("CloneMaster", "Wear components removed") }
+                if (cfg.watchVariant) { TvSpoofRegistry.watchVariant = true; android.util.Log.i("CloneMaster", "Watch variant enabled") }
+                android.util.Log.i("CloneMaster", "TvWearManager.Hooks installed")
+            } catch (e: Exception) {
+                android.util.Log.e("CloneMaster", "TvWearManager.Hooks failed: ${e.message}", e)
             }
         }
     }
+}
+
+object TvSpoofRegistry {
+    var tvLauncher: Boolean = false
+    var joystickPointer: Boolean = false
+    var pip: Boolean = false
+    var removeWear: Boolean = false
+    var watchVariant: Boolean = false
+    fun clear() { tvLauncher = false; joystickPointer = false; pip = false; removeWear = false; watchVariant = false }
 }

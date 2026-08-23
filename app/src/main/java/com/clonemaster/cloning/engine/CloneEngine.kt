@@ -20,7 +20,7 @@ class CloneEngine(private val context: Context) {
     private val manifestTransformer = ManifestTransformer()
     private val resourceTransformer = ResourceTransformer()
     private val dexTransformer = DexTransformer()
-    private val nativeHandler = NativeLibHandler()
+    private val nativeHandler = NativeLibHandler(context)
     private val signingPipeline = SigningPipeline()
     private val diagnostics = CloningDiagnostics()
 

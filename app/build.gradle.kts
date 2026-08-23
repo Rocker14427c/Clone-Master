@@ -46,6 +46,16 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+    
+    // Include native libraries from jniLibs
+    sourceSets {
+        named("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
     }
 }
 
@@ -68,6 +78,7 @@ dependencies {
     implementation("org.ow2.asm:asm:9.6")
     implementation("org.ow2.asm:asm-commons:9.6")
     implementation("com.google.code.gson:gson:2.10.1")
+    implementation("com.github.luben:zstd-jni:1.5.5-11") // Zstandard compression for data bundling
 
     // Testing
     testImplementation("junit:junit:4.13.2")

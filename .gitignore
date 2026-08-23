@@ -40,3 +40,11 @@ Thumbs.db
 __pycache__/
 .venv/
 node_modules/
+
+# Native libraries from Next-Cloner reference (large binaries)
+# These should be added via Git LFS or downloaded separately
+app/src/main/jniLibs/**/*.so
+app/src/main/assets/lib*.zip
+app/src/main/assets/classes.dex.xz
+app/src/main/assets/kotlin.dex.xz
+app/src/main/assets/microsocks/

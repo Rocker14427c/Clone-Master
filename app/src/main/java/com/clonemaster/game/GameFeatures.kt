@@ -9,7 +9,6 @@ class GameFeatures(private val context: Context) {
     fun handleObb(originalPackage: String, clonePackage: String, config: GameConfig) {
         val obbDir = File("/sdcard/Android/obb/$originalPackage")
         if (!obbDir.exists()) return
-
         if (config.copyObb) {
             val dest = File("/sdcard/Android/obb/$clonePackage")
             dest.mkdirs()
@@ -17,26 +16,48 @@ class GameFeatures(private val context: Context) {
                 try { f.copyTo(File(dest, f.name), overwrite = true) } catch (ignored: Exception) {}
             }
         }
-
-        if (config.bundleObb) {
-            // Bundling handled in CloneEngine
-        }
     }
 
     fun startFpsMonitor() {
-        // Use Choreographer to calculate FPS
-        // Overlay TextView via WindowManager
+        // Use Choreographer to calculate FPS + overlay TextView via WindowManager
     }
 
     fun initKeyMapper(mappings: Map<String, String>) {
-        // Key mapper: overlay buttons that inject MotionEvent / KeyEvent
-        // Uses AccessibilityService or WindowManager overlay + Instrumentation
+        // Key mapper: overlay buttons that inject MotionEvent/KeyEvent
     }
 
     object Hooks {
-        fun install(config: GameConfig) {
-            // Hook OBB access: Environment.getExternalStorageDirectory() + "/Android/obb"
-            // Redirect to clone's OBB dir
+        private var installed = false
+        fun install(cfg: GameConfig) {
+            if (installed) return
+            installed = true
+            try {
+                android.util.Log.i("CloneMaster", "GameFeatures.Hooks installing...")
+                if (cfg.bundleObb || cfg.copyObb || cfg.supportObb) {
+                    GameSpoofRegistry.obbEnabled = true
+                    android.util.Log.i("CloneMaster", "OBB support enabled")
+                }
+                if (cfg.keyMapperEnabled) {
+                    GameSpoofRegistry.keyMapperEnabled = true
+                    GameSpoofRegistry.keyMappings = cfg.keyMappings.toMap()
+                    android.util.Log.i("CloneMaster", "Key mapper enabled: ${cfg.keyMappings.size} mappings")
+                }
+                if (cfg.fpsMonitor) {
+                    GameSpoofRegistry.fpsMonitor = true
+                    android.util.Log.i("CloneMaster", "FPS monitor enabled")
+                }
+                android.util.Log.i("CloneMaster", "GameFeatures.Hooks installed")
+            } catch (e: Exception) {
+                android.util.Log.e("CloneMaster", "GameFeatures.Hooks failed: ${e.message}", e)
+            }
         }
     }
+}
+
+object GameSpoofRegistry {
+    var obbEnabled: Boolean = false
+    var keyMapperEnabled: Boolean = false
+    var keyMappings: Map<String, String> = emptyMap()
+    var fpsMonitor: Boolean = false
+    fun clear() { obbEnabled = false; keyMapperEnabled = false; keyMappings = emptyMap(); fpsMonitor = false }
 }

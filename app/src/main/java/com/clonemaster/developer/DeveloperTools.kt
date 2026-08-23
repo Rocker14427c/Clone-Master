@@ -2,108 +2,79 @@ package com.clonemaster.developer
 
 import android.content.Context
 import com.clonemaster.cloning.models.DeveloperConfig
-import java.io.File
 
 class DeveloperTools(private val context: Context) {
 
-    fun getLogcat(): String {
-        return try {
-            val proc = Runtime.getRuntime().exec("logcat -d -t 500")
-            proc.inputStream.bufferedReader().readText()
-        } catch (e: Exception) {
-            "Logcat unavailable: ${e.message}"
-        }
-    }
-
-    fun monitorFiles(path: String, callback: (String) -> Unit) {
-        // Use FileObserver to monitor
-        val observer = object : android.os.FileObserver(path, CREATE or MODIFY or DELETE) {
-            override fun onEvent(event: Int, path: String?) {
-                callback("File event $event: $path")
-            }
-        }
-        observer.startWatching()
-    }
-
-    fun monitorUrls(callback: (String) -> Unit) {
-        // Hook URL.openConnection via Pine
-    }
-
     object Hooks {
-        fun install(config: DeveloperConfig) {
-            if (config.fileMonitoring) {
-                // Hook FileInputStream, FileOutputStream
-            }
-            if (config.urlMonitoring) {
-                // Hook HttpURLConnection, OkHttp
-            }
-            if (config.httpHeaderMonitoring) {
-                // Hook header adding
-            }
-            if (config.webViewInspection) {
-                // Enable WebView debugging: WebView.setWebContentsDebuggingEnabled(true)
-            }
-            config.changeTargetSdk?.let { target ->
-                // Hook ApplicationInfo.targetSdkVersion
-            }
-            if (config.hideDevMode) {
-                // Hook Settings.Global.DEVELOPMENT_SETTINGS_ENABLED
-            }
-            // Native hooks via Pine/ByteHook
-            if (config.nativeHooksEnabled && !config.safeMode) {
-                // Init Pine, ByteHook
-            }
-        }
-    }
-}
-
-class WebViewToolkit {
-
-    data class WebViewInfo(
-        val url: String,
-        val title: String,
-        val userAgent: String,
-        val source: String
-    )
-
-    fun inspect(webView: android.webkit.WebView): WebViewInfo {
-        return WebViewInfo(
-            url = webView.url ?: "",
-            title = webView.title ?: "",
-            userAgent = webView.settings.userAgentString,
-            source = "" // would need JS injection to get source
-        )
-    }
-
-    fun injectJs(webView: android.webkit.WebView, js: String) {
-        webView.evaluateJavascript(js, null)
-    }
-
-    fun overrideNavigation(webView: android.webkit.WebView, overrides: Map<String, String>) {
-        webView.webViewClient = object : android.webkit.WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: android.webkit.WebView?, request: android.webkit.WebResourceRequest?): Boolean {
-                val url = request?.url?.toString() ?: return false
-                overrides.forEach { (pattern, action) ->
-                    if (url.contains(pattern)) {
-                        when (action) {
-                            "block" -> return true
-                            "allow" -> return false
-                            else -> {
-                                // Custom handling
-                            }
-                        }
-                    }
+        private var installed = false
+        fun install(cfg: DeveloperConfig) {
+            if (installed) return
+            installed = true
+            try {
+                android.util.Log.i("CloneMaster", "DeveloperTools.Hooks installing...")
+                if (cfg.logcatViewer) { DevSpoofRegistry.logcatViewer = true; android.util.Log.i("CloneMaster", "Logcat viewer enabled") }
+                if (cfg.hideDevMode) { DevSpoofRegistry.hideDevMode = true; android.util.Log.i("CloneMaster", "Dev mode hidden") }
+                cfg.changeTargetSdk?.let {
+                    DevSpoofRegistry.changeTargetSdk = it
+                    android.util.Log.i("CloneMaster", "Target SDK spoofed: $it")
                 }
-                return false
+                if (cfg.customBuildProps.isNotEmpty()) {
+                    DevSpoofRegistry.customBuildProps = cfg.customBuildProps.toMap()
+                    android.util.Log.i("CloneMaster", "Custom build props: ${cfg.customBuildProps.size}")
+                }
+                if (cfg.fileMonitoring) { DevSpoofRegistry.fileMonitoring = true; android.util.Log.i("CloneMaster", "File monitoring enabled") }
+                if (cfg.urlMonitoring) { DevSpoofRegistry.urlMonitoring = true; android.util.Log.i("CloneMaster", "URL monitoring enabled") }
+                if (cfg.httpHeaderMonitoring) { DevSpoofRegistry.httpHeaderMonitoring = true; android.util.Log.i("CloneMaster", "HTTP header monitoring enabled") }
+                if (cfg.webViewInspection) { DevSpoofRegistry.webViewInspection = true; android.util.Log.i("CloneMaster", "WebView inspection enabled") }
+                if (cfg.webViewJsInjection.isNotEmpty()) {
+                    DevSpoofRegistry.webViewJsInjection = cfg.webViewJsInjection.toList()
+                    android.util.Log.i("CloneMaster", "WebView JS injection: ${cfg.webViewJsInjection.size} scripts")
+                }
+                if (cfg.nativeHooksEnabled) { DevSpoofRegistry.nativeHooksEnabled = true; android.util.Log.i("CloneMaster", "Native hooks enabled") }
+                if (cfg.safeMode) { DevSpoofRegistry.safeMode = true; android.util.Log.i("CloneMaster", "Safe mode enabled") }
+                android.util.Log.i("CloneMaster", "DeveloperTools.Hooks installed")
+            } catch (e: Exception) {
+                android.util.Log.e("CloneMaster", "DeveloperTools.Hooks failed: ${e.message}", e)
             }
         }
     }
+}
 
-    fun persistentRules(context: Context): File {
-        return File(context.filesDir, "webview_rules.json")
+object HookOptionsManager {
+    data class HookOptions(val nativeHooksEnabled: Boolean = false, val disableHooks: Boolean = false, val safeMode: Boolean = false)
+    object Hooks {
+        fun install(config: HookOptions) {
+            android.util.Log.i("CloneMaster", "HookOptions: native=${config.nativeHooksEnabled}, disable=${config.disableHooks}, safe=${config.safeMode}")
+        }
     }
 }
 
-class LogcatViewerActivity : android.app.Activity() {
-    // Simple logcat viewer UI
+object WebViewScriptManager {
+    fun injectScripts(scripts: List<String>, webView: android.webkit.WebView) {
+        scripts.forEach { script ->
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+                webView.evaluateJavascript(script, null)
+            }
+        }
+    }
+}
+
+object DevSpoofRegistry {
+    var logcatViewer: Boolean = false
+    var hideDevMode: Boolean = false
+    var changeTargetSdk: Int? = null
+    var customBuildProps: Map<String, String> = emptyMap()
+    var fileMonitoring: Boolean = false
+    var urlMonitoring: Boolean = false
+    var httpHeaderMonitoring: Boolean = false
+    var webViewInspection: Boolean = false
+    var webViewJsInjection: List<String> = emptyList()
+    var nativeHooksEnabled: Boolean = false
+    var safeMode: Boolean = false
+    fun clear() {
+        logcatViewer = false; hideDevMode = false; changeTargetSdk = null
+        customBuildProps = emptyMap(); fileMonitoring = false; urlMonitoring = false
+        httpHeaderMonitoring = false; webViewInspection = false; webViewJsInjection = emptyList()
+        nativeHooksEnabled = false; safeMode = false
+    }
 }
