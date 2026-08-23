@@ -3,7 +3,7 @@
 **Date:** 2026-08-21 (Patna, Bihar, IN)
 **Repo:** https://github.com/Rocker14427c/Clone-Master
 **Local Path:** /home/user/Clone-Master
-**Reference:** https://github.com/Rocker14427c/Next-Cloner (decompiled AppCloner 3.6.8 used as inspiration)
+**Reference:** https://github.com/Rocker14427c/Next-Cloner (decompiled Next-Cloner-by-Rocker14427c.apk used as inspiration)
 
 ## ✅ Tasks Completed
 
