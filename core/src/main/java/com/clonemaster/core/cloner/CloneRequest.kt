@@ -49,5 +49,12 @@ data class CloneRequest(
      * When true, known branding asset files (asset path contains "branding"
      * or "app_cloner", case-insensitive) are dropped from the clone.
      */
-    val removeBranding: Boolean = false
+    val removeBranding: Boolean = false,
+    /**
+     * Runtime delivery: prebuilt, self-contained dex of the clone runtime
+     * (classes only; no libraries). Required when [wrapApplication] is true.
+     * Injected as classes(N+1).dex so the original dex set and order stay
+     * untouched (PathClassLoader loads every classes*.dex in the APK).
+     */
+    val runtimeDex: ByteArray? = null
 )

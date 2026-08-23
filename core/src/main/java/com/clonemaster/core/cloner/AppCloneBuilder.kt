@@ -158,10 +158,35 @@ class AppCloneBuilder {
             diag.warn("No original-package references found in any DEX - clone is a pure package rename")
         }
 
+        // ---------------- runtime delivery ----------------
+        // Runtime injection was decided during manifest transform
+        // (wrapApplication); the runtime dex + meta are appended here so the
+        // ORIGINAL dex set/order stays untouched and PathClassLoader picks the
+        // runtime up as classes(N+1).dex. Fail-closed by design.
+        if (effectiveRequest.wrapApplication && !manifestResult.wrappedApplication) {
+            error("Runtime injection requested but the application wrapper was not applied – refusing to ship a featureless clone")
+        }
+
         // ---------------- extra assets ----------------
         val additions = mutableMapOf<String, ByteArray>()
         request.extraAssets.forEach { (name, bytes) ->
             additions["assets/" + name.trimStart('/')] = bytes
+        }
+        if (manifestResult.wrappedApplication) {
+            val runtimeDex = effectiveRequest.runtimeDex
+            if (runtimeDex == null || runtimeDex.isEmpty()) {
+                error("wrapApplication=true requires CloneRequest.runtimeDex (prebuilt runtime classes.dex) – refusing to ship a featureless clone")
+            }
+            val runtimeDexName = "classes${dexEntries.size + 1}.dex"
+            additions[runtimeDexName] = runtimeDex
+            val orig = manifestResult.originalApplication
+            val meta = if (orig != null) {
+                "{\"originalApplication\":\"$orig\",\"runtimeVersion\":1}"
+            } else {
+                "{\"originalApplication\":null,\"runtimeVersion\":1}"
+            }
+            additions["assets/cloner_runtime.json"] = meta.toByteArray(Charsets.UTF_8)
+            diag.log("Runtime injected: application wrapped (original=${orig ?: "none"}), $runtimeDexName (${runtimeDex.size} bytes), assets/cloner_runtime.json written")
         }
 
         // ---------------- pack + sign ----------------

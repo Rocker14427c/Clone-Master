@@ -16,6 +16,7 @@ dependencyResolutionManagement {
 rootProject.name = "Clone-Master"
 include(":app")
 include(":core")
+include(":runtime")
 
 // Enable version catalog and build cache for deterministic builds
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")

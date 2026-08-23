@@ -34,6 +34,14 @@ android {
     buildFeatures {
         viewBinding = true
     }
+
+    // Merge the generated clone-runtime dex (built by :runtime via d8) into our
+    // APK's assets, where CloneEngine reads it at clone-build time.
+    sourceSets {
+        named("main") {
+            assets.srcDir("../runtime/build/runtimeDexAssets")
+        }
+    }
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -68,3 +76,6 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
+
+// Assets in the APK must include the freshly-dexed clone runtime.
+tasks.named("preBuild") { dependsOn(":runtime:stageRuntimeAsset") }

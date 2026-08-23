@@ -18,7 +18,11 @@ data class ManifestTransformResult(
     /** Optional-feature effects actually applied (label/version overrides). */
     val appliedOptions: List<String> = emptyList(),
     /** Non-fatal issues (e.g. requested override whose attribute was absent). */
-    val warnings: List<String> = emptyList()
+    val warnings: List<String> = emptyList(),
+    /** True when the <application> name was swapped to the runtime wrapper. */
+    val wrappedApplication: Boolean = false,
+    /** Resolved ORIGINAL application class (clone package, post-rename); null when none. */
+    val originalApplication: String? = null
 )
 
 /**
@@ -42,6 +46,10 @@ class ManifestCloner {
     companion object {
         val PACKAGE_REGEX = Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+")
         const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
+
+        /** Runtime wrapper class injected into clones when wrapApplication is requested. */
+        const val WRAPPER_CLASS = "com.clonemaster.runtime.HookApplication"
+        const val RUNTIME_PACKAGE_PREFIX = "com.clonemaster.runtime."
 
         private val COMPONENT_ELEMENTS = setOf(
             "application", "activity", "activity-alias", "service", "receiver", "provider", "instrumentation"
@@ -122,11 +130,47 @@ class ManifestCloner {
             if (changed) doc.setStringValue(authAttr, newValue)
         }
 
-        // 5. version overrides – MODIFY-ONLY policy: binary-XML attribute
-        //    insertion is unsafe (attributes are indexed by the string pool /
-        //    resource map), so an absent attribute is reported, never added.
+        // 4b. application wrapper (runtime delivery): swap <application
+        //     android:name> to the runtime HookApplication, remembering the
+        //     ORIGINAL class (which the DEX engine moved into the clone
+        //     package, so resolve relative names against the clone package).
         val warnings = mutableListOf<String>()
         val applied = mutableListOf<String>()
+        var wrappedApplication = false
+        var originalApplication: String? = null
+        if (request.wrapApplication) {
+            val appEl = doc.findFirstElement("application")
+                ?: error("wrapApplication requested but the manifest has no <application> element")
+            val nameAttr = findAndroidAttr(doc, appEl, androidNsIdx, "name")
+            val current = nameAttr?.let { doc.attrValue(it) }?.takeIf { it.isNotEmpty() }
+            if (current != null && current.startsWith(RUNTIME_PACKAGE_PREFIX)) {
+                error("the source APK is already runtime-wrapped ($current) – refusing to double-wrap; clone the original app instead")
+            }
+            originalApplication = when {
+                current == null -> null
+                current.startsWith(".") -> request.clonePackage + current
+                !current.contains(".") -> request.clonePackage + "." + current
+                else -> current
+            }
+            if (nameAttr != null) {
+                doc.setStringValue(nameAttr, WRAPPER_CLASS)
+            } else {
+                // Adding an attribute is only safe when the 'name' string and
+                // the android namespace already exist in the document.
+                val nameIdx = doc.strings.indexOf("name")
+                if (nameIdx < 0 || androidNsIdx < 0) {
+                    error("wrapApplication: <application> has no android:name and the string pool lacks 'name' – cannot wrap safely")
+                }
+                val vIdx = doc.findString(WRAPPER_CLASS)
+                appEl.attributes.add(BinaryXml.Attribute(androidNsIdx, nameIdx, vIdx, BinaryXml.Attribute.TYPE_STRING, vIdx))
+            }
+            wrappedApplication = true
+            applied += "application wrapped -> $WRAPPER_CLASS (original=${originalApplication ?: "none"})"
+        }
+
+        // 5. version overrides – MODIFY-ONLY policy (label/version): an absent
+        //    attribute is reported, never added. (The wrap above is the one
+        //    deliberate, guarded exception for android:name on <application>.)
         request.versionNameOverride?.let { vn ->
             val a = findAndroidAttr(doc, manifest, androidNsIdx, "versionName")
             if (a != null) {
@@ -163,7 +207,8 @@ class ManifestCloner {
             if (n > 0) applied += "launcher-activity label(s) -> \"$label\" ($n)"
         }
 
-        return ManifestTransformResult(newPkg, authorityMap, removedShared, nsMap, rewrittenNames, applied, warnings)
+        return ManifestTransformResult(newPkg, authorityMap, removedShared, nsMap, rewrittenNames,
+            applied, warnings, wrappedApplication, originalApplication)
     }
 
     /**

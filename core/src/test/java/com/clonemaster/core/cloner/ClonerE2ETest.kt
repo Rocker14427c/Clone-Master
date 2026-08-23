@@ -501,4 +501,155 @@ class ClonerE2ETest {
         )
         assertTrue("OFF state must not modify assets", ZipIO.read(off.apk).map { it.name }.contains("assets/app_cloner_branding.png"))
     }
+
+    // ------------------------------------------------ P0-2 runtime-injection fixtures
+
+    /** Manifest whose <application> optionally carries android:name=$pkg.MyApp, plus one activity. */
+    private fun buildAppManifest(pkg: String, withAppName: Boolean = true, appName: String? = null): ByteArray {
+        val doc = BinaryXml.Document()
+        val androidNs = doc.addString("http://schemas.android.com/apk/res/android")
+        doc.nodes.add(BinaryXml.Node.NamespaceStart(doc.addString("android"), androidNs, 1))
+        val manifest = BinaryXml.Element(1, BinaryXml.NO_INDEX, doc.addString("manifest"), mutableListOf())
+        fnAttr(doc, manifest, "package", null, pkg)
+        val app = BinaryXml.Element(2, BinaryXml.NO_INDEX, doc.addString("application"), mutableListOf())
+        if (withAppName) fnAttr(doc, app, "name", androidNs, appName ?: "$pkg.MyApp")
+        val activity = BinaryXml.Element(3, BinaryXml.NO_INDEX, doc.addString("activity"), mutableListOf())
+        fnAttr(doc, activity, "name", androidNs, "$pkg.MainActivity")
+        fun end(e: BinaryXml.Element) = BinaryXml.Node.EndElement(e.name, BinaryXml.NO_INDEX)
+        doc.nodes.add(BinaryXml.Node.Elem(manifest))
+        doc.nodes.add(BinaryXml.Node.Elem(app))
+        doc.nodes.add(BinaryXml.Node.Elem(activity)); doc.nodes.add(end(activity))
+        doc.nodes.add(end(app))
+        doc.nodes.add(end(manifest))
+        return BinaryXml.write(doc)
+    }
+
+    private fun buildRuntimeApk(withAppName: Boolean = true, appName: String? = null): ByteArray {
+        val manifest = buildAppManifest(ORIG, withAppName, appName)
+        val dex = buildRealDex(
+            "Lcom/example/test/MyApp;",
+            "Lcom/example/test/MainActivity;",
+            strings = listOf(ORIG)
+        )
+        val arsc = ByteArray(64) { 0 }
+        val base = mutableListOf<ZipIO.Entry>()
+        base.add(ZipIO.Entry("AndroidManifest.xml", ZipIO.STORED, crc(manifest), manifest.size.toLong(), manifest.size.toLong(), 0, manifest))
+        base.add(ZipIO.Entry("classes.dex", ZipIO.STORED, crc(dex), dex.size.toLong(), dex.size.toLong(), 0, dex))
+        base.add(ZipIO.Entry("resources.arsc", ZipIO.STORED, crc(arsc), arsc.size.toLong(), arsc.size.toLong(), 0, arsc))
+        return ZipIO().write(base, emptyMap(), emptyMap())
+    }
+
+    private fun fakeRuntimeDex(): ByteArray = buildRealDex(
+        "Lcom/clonemaster/runtime/HookApplication;",
+        "Lcom/clonemaster/runtime/RuntimeInit;",
+        strings = listOf("cloner_runtime.json")
+    )
+
+    private fun readManifest(product: AppCloneBuilder.Product): BinaryXml.Document =
+        BinaryXml.read(entryData(ZipIO.read(product.apk).first { it.name == "AndroidManifest.xml" }))
+
+    /** Entry payload honoring the compression method (additions are DEFLATED, manifest STORED). */
+    private fun entryData(e: ZipIO.Entry): ByteArray =
+        if (e.method == ZipIO.STORED) e.compressedData else {
+            val inf = java.util.zip.Inflater(true)
+            try {
+                inf.setInput(e.compressedData)
+                val out = ByteArrayOutputStream(e.uncompressedSize.toInt().coerceAtLeast(16))
+                val buf = ByteArray(8192)
+                while (!inf.finished()) {
+                    val n = inf.inflate(buf)
+                    if (n == 0 && inf.needsInput()) break
+                    out.write(buf, 0, n)
+                }
+                out.toByteArray()
+            } finally {
+                inf.end()
+            }
+        }
+
+    // ------------------------------------------------ P0-2 runtime-injection tests
+
+    @Test
+    fun `runtime injection wraps application, appends dex, writes meta`() {
+        val src = buildRuntimeApk(withAppName = true)
+        val request = CloneRequest(ORIG, CLONE, wrapApplication = true, runtimeDex = fakeRuntimeDex())
+        val product = AppCloneBuilder().build(src, request)
+        assertFalse("build must succeed: ${product.diag.errors}", product.diag.hasErrors)
+
+        val entries = ZipIO.read(product.apk)
+        val names = entries.map { it.name }
+        assertTrue("runtime dex appended as classes2.dex", names.contains("classes2.dex"))
+        assertTrue("runtime meta written", names.contains("assets/cloner_runtime.json"))
+
+        val meta = String(entryData(entries.first { it.name == "assets/cloner_runtime.json" }))
+        assertTrue("original class preserved in meta: $meta",
+            meta.contains("\"originalApplication\":\"$CLONE.MyApp\""))
+
+        val doc = readManifest(product)
+        val appName = doc.findFirstElement("application")
+            ?.let { doc.findAttr(it, "name")?.let { a -> doc.attrValue(a) } }
+        assertEquals("com.clonemaster.runtime.HookApplication", appName)
+
+        val rtClasses = DexPackageRewriter.listClasses(entryData(entries.first { it.name == "classes2.dex" }))
+        assertTrue(rtClasses.contains("Lcom/clonemaster/runtime/HookApplication;"))
+
+        assertTrue("validator must pass (wrapper resolves): ${ApkValidator().validate(product.apk, request).errors}",
+            ApkValidator().validate(product.apk, request).ok)
+        val v2 = V2Scheme.verify(product.apk)
+        assertTrue("v2 must verify: ${v2.message}", v2.verified)
+    }
+
+    @Test
+    fun `wrap without runtime dex fails closed`() {
+        val src = buildRuntimeApk(withAppName = true)
+        try {
+            AppCloneBuilder().build(src, CloneRequest(ORIG, CLONE, wrapApplication = true, runtimeDex = null))
+            throw AssertionError("expected fail-closed build error")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message.orEmpty().contains("runtimeDex"))
+        }
+    }
+
+    @Test
+    fun `application without name gets wrapped - guarded attribute add, meta has null original`() {
+        val src = buildRuntimeApk(withAppName = false)
+        val request = CloneRequest(ORIG, CLONE, wrapApplication = true, runtimeDex = fakeRuntimeDex())
+        val product = AppCloneBuilder().build(src, request)
+        assertFalse("build must succeed: ${product.diag.errors}", product.diag.hasErrors)
+        val entries = ZipIO.read(product.apk)
+        val meta = String(entryData(entries.first { it.name == "assets/cloner_runtime.json" }))
+        assertTrue("null original expected: $meta", meta.contains("\"originalApplication\":null"))
+        val doc = readManifest(product)
+        val appName = doc.findFirstElement("application")
+            ?.let { doc.findAttr(it, "name")?.let { a -> doc.attrValue(a) } }
+        assertEquals("com.clonemaster.runtime.HookApplication", appName)
+        assertTrue(ApkValidator().validate(product.apk, request).ok)
+    }
+
+    @Test
+    fun `double wrap is refused with a clear error`() {
+        val src = buildRuntimeApk(withAppName = true, appName = "com.clonemaster.runtime.HookApplication")
+        try {
+            AppCloneBuilder().build(src, CloneRequest(ORIG, CLONE, wrapApplication = true, runtimeDex = fakeRuntimeDex()))
+            throw AssertionError("expected double-wrap refusal")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message.orEmpty().contains("already runtime-wrapped"))
+        }
+    }
+
+    @Test
+    fun `OFF state injects no runtime and keeps original application class`() {
+        val src = buildRuntimeApk(withAppName = true)
+        val request = CloneRequest(ORIG, CLONE) // wrapApplication=false, runtimeDex=null
+        val product = AppCloneBuilder().build(src, request)
+        assertFalse(product.diag.hasErrors)
+        val names = ZipIO.read(product.apk).map { it.name }
+        assertFalse(names.contains("classes2.dex"))
+        assertFalse(names.contains("assets/cloner_runtime.json"))
+        val doc = readManifest(product)
+        val appName = doc.findFirstElement("application")
+            ?.let { doc.findAttr(it, "name")?.let { a -> doc.attrValue(a) } }
+        assertEquals("$CLONE.MyApp", appName) // renamed original, NOT the wrapper
+        assertTrue(ApkValidator().validate(product.apk, request).ok)
+    }
 }

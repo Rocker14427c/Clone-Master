@@ -334,8 +334,9 @@ class CloneEngine(private val context: Context) {
             val apkBytes = apkPath.readBytes()
             if (apkBytes.isEmpty()) throw IllegalStateException("Source APK is empty: ${apkPath.absolutePath}")
 
-            if (OptionalFeatures.anyEnabled(config)) {
-                diagnostics.warn("Runtime-hook options are enabled. The native pipeline applies General build options (label/version/branding) and clean-clone mechanics; runtime feature injection is phase 2 (reported honestly, not hidden)")
+            val featuresEnabled = OptionalFeatures.anyEnabled(config)
+            if (featuresEnabled) {
+                onProgress("Runtime features enabled – injecting clone runtime...")
             }
 
             // General options reach the native pipeline here. Version overrides
@@ -348,6 +349,27 @@ class CloneEngine(private val context: Context) {
                 .takeIf { it > 0 && it != srcVersionCode }
             val labelOverride = config.appName.takeIf { it.isNotBlank() }
 
+            // Runtime delivery: when any optional feature is enabled, the clone
+            // gets the self-contained runtime (application wrapped, config read
+            // inside the clone). Fail-closed: missing runtime asset = failed build,
+            // never a silently featureless clone.
+            var runtimeDex: ByteArray? = null
+            if (featuresEnabled) {
+                runtimeDex = try {
+                    context.assets.open("cloner_runtime/classes.dex").use { it.readBytes() }
+                } catch (e: Exception) {
+                    null
+                }
+                if (runtimeDex == null || runtimeDex.isEmpty()) {
+                    throw IllegalStateException(
+                        "Optional features are enabled but this build of Clone-Master does not carry " +
+                                "assets/cloner_runtime/classes.dex – refusing to produce a featureless clone. " +
+                                "Rebuild the app (the :runtime module generates this asset via d8)."
+                    )
+                }
+                diagnostics.log("Runtime asset loaded: ${runtimeDex.size} bytes")
+            }
+
             val request = com.clonemaster.core.cloner.CloneRequest(
                 originalPackage = config.originalPackage,
                 clonePackage = config.clonePackage,
@@ -356,7 +378,9 @@ class CloneEngine(private val context: Context) {
                 labelOverride = labelOverride,
                 versionNameOverride = versionNameOverride,
                 versionCodeOverride = versionCodeOverride,
-                removeBranding = config.removeBranding
+                removeBranding = config.removeBranding,
+                wrapApplication = featuresEnabled,
+                runtimeDex = runtimeDex
             )
             onProgress("Transforming manifest & DEX...")
             val builder = com.clonemaster.core.cloner.AppCloneBuilder()

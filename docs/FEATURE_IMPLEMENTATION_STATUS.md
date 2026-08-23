@@ -8,8 +8,7 @@ Statuses: VERIFIED WORKING (end-to-end evidence) / VERIFIED (manager app) (works
 PARTIAL (desktop-only path) (implemented only in the apktool pipeline that cannot run on Android) /
 BROKEN (never reaches the clone) / BROKEN (UI) (mapping/duplication defect) / BLOCKED (Android platform limit).
 
-**Headline:** 82 of 83 UI options depend on transforms/hooks that the on-device (native) pipeline does not deliver.
-Only package/authority renaming is VERIFIED WORKING end-to-end on-device.
+**Headline (updated 2026-08-23, P0-2):** the runtime-delivery mechanism now EXISTS and is injected on-device when features are enabled (fail-closed, application wrap, config contract-pinned). V1 delivers 3 runtime behaviors (screenshots/keep-awake/orientation) with on-device verification pending; ~57 hook-dependent options still need the P1 hook substrate. Verified end-to-end: package/authority transform + label/versionName/versionCode/removeBranding.
 
 | # | UI Option id | Name | Category | Config field | UI flag | Status | Evidence / gap |
 |---|---|---|---|---|---|---|---|
@@ -36,7 +35,7 @@ Only package/authority renaming is VERIFIED WORKING end-to-end on-device.
 | 21 | `privacy_sensors` | Disable Sensors / Fake Sensors | PRIVACY | `privacy.disableSensors` | MAY_AFFECT_COMPATIBILITY | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
 | 22 | `privacy_gps` | GPS / Location Spoofing | PRIVACY | `privacy.gpsSpoof` | MAY_AFFECT_COMPATIBILITY | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
 | 23 | `privacy_hideMockLocation` | Hide Mock Location | PRIVACY | `environment.hideMockLocation` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
-| 24 | `privacy_screenshots` | Disable Screenshots | PRIVACY | `privacy.disableScreenshots` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
+| 24 | `privacy_screenshots` | Disable Screenshots | PRIVACY | `privacy.disableScreenshots` | SUPPORTED | PARTIAL (runtime delivered, device test pending) | P0-2: runtime injected; WindowFlagsApplier sets FLAG_SECURE per activity; parse+contract tests pass; on-device checklist RUNTIME_ARCHITECTURE.md §5 |
 | 25 | `privacy_recents` | Exclude from Recents | PRIVACY | `privacy.excludeFromRecents` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
 | 26 | `privacy_accounts` | Disable Account Access | PRIVACY | `privacy.disableAccounts` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
 | 27 | `privacy_contacts` | Disable Contacts Access | PRIVACY | `privacy.disableContacts` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
@@ -46,9 +45,9 @@ Only package/authority renaming is VERIFIED WORKING end-to-end on-device.
 | 31 | `privacy_permissions` | Disable/Strip Permissions | PRIVACY | `privacy.disabledPermissions` | MAY_AFFECT_COMPATIBILITY | PARTIAL (desktop-only path) | permission strip only in apktool path |
 | 32 | `parity_appsFlyer` | Disable AppsFlyer Tracking | PRIVACY | `parityFeatures.trackingBlocker.disableAppsFlyer` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
 | 33 | `display_darkMode` | Dark Mode | DISPLAY | `display.darkMode` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
-| 34 | `display_rotation` | Rotation / Orientation Lock | DISPLAY | `display.orientationLock` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
+| 34 | `display_rotation` | Rotation / Orientation Lock | DISPLAY | `display.orientationLock` | SUPPORTED | PARTIAL (runtime delivered, device test pending) | P0-2: setRequestedOrientation per activity; tests pass; device check pending |
 | 35 | `display_fullscreen` | Immersive Fullscreen Mode | DISPLAY | `display.immersiveFullscreen` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
-| 36 | `display_keepAwake` | Keep Screen Awake | DISPLAY | `display.keepScreenAwake` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
+| 36 | `display_keepAwake` | Keep Screen Awake | DISPLAY | `display.keepScreenAwake` | SUPPORTED | PARTIAL (runtime delivered, device test pending) | P0-2: FLAG_KEEP_SCREEN_ON per activity; tests pass; device check pending |
 | 37 | `display_colors` | Status/Navigation/Toolbar Colors | DISPLAY | `display.statusBarColor` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
 | 38 | `display_displaySize` | Custom Display Size | DISPLAY | `display.customDisplaySize` | MAY_AFFECT_COMPATIBILITY | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
 | 39 | `display_locale` | Custom Language / Locale | DISPLAY | `display.customLanguage` | SUPPORTED | BROKEN | value plumbed UI->CloneConfig->assets/clone_config.json; no consumer inside clone built on-device |
@@ -114,11 +113,11 @@ Only package/authority renaming is VERIFIED WORKING end-to-end on-device.
 - VERIFIED WORKING (clone-affecting, end-to-end): **5** (package/authority transform incl. component names, multidex DEX rebuild, signing, validation; P0-1: app label, versionName, versionCode, removeBranding)
 - VERIFIED (manager app) behaviors: presets, search, option state, save/load/export config, compatibility analysis, env diagnostics screen, logcat viewer (unit-tested)
 - PARTIAL (desktop-only path): ~10 build-time transforms (custom icon, icon badge, permissions, stealth, backup, fragile-data, OBB, data-bundle)
-- BROKEN (never delivered to clone): ~60 runtime-hook options
+- BROKEN (never delivered to clone): ~57 hook-dependent options (were ~60; 3 now runtime-delivered pending device test)
 - BROKEN (UI defects): 5 rows (see table: duplicates, wrong field `isBatch`, duplicate version control)
 - Duplicated UI options (same field twice): hideRoot x2, hideEmulator x2, hideMockLocation x2, logcatViewer x2, versionName x2, WebView UA x2-fields
 
 ## Verification roadmap evidence pointers
 - Engine regression (device): mark.via.gp -> mark.via.gp.clone1 (installed+launched, per handover)
 - Engine regression (sandbox, this session): com.clonemaster -> com.clonemaster.clone1.verify, longer package, v2-signed, aapt/zipalign clean
-- Unit tests: 40/40 (CloningCoreTest 6, ClonerE2ETest 9, OptionStateTest 6, CloneConfigDefaultsTest 3, ManifestTransformationTest 6, DataBundleTest 7)
+- Unit tests: 54/54 (CloningCoreTest 6, ClonerE2ETest 9, OptionStateTest 6, CloneConfigDefaultsTest 3, ManifestTransformationTest 6, DataBundleTest 7)
