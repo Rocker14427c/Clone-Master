@@ -70,7 +70,24 @@ class AppCloneBuilder {
         if (staleSig.isNotEmpty()) {
             diag.log("Removed stale v1 signature files: ${staleSig.map { it.name }.joinToString(", ")}")
         }
-        val entries = allEntries.filterNot { ZipIO.Companion.isStaleV1SignatureFile(it.name) }
+        val sigStripped = allEntries.filterNot { ZipIO.Companion.isStaleV1SignatureFile(it.name) }
+
+        // General option: Remove Branding – drop known branding/analytics asset
+        // files (matches the historical resource-path behavior: asset name
+        // contains "branding" or "app_cloner", case-insensitive).
+        val entries = if (request.removeBranding) {
+            val (branded, keep) = sigStripped.partition {
+                it.name.startsWith("assets/") &&
+                        (it.name.contains("branding", ignoreCase = true) ||
+                                it.name.contains("app_cloner", ignoreCase = true))
+            }
+            if (branded.isNotEmpty()) {
+                diag.log("removeBranding: dropped ${branded.size} asset(s): ${branded.joinToString(", ") { it.name }}")
+            } else {
+                diag.log("removeBranding: requested, no branding assets found")
+            }
+            keep
+        } else sigStripped
 
         // ---------------- manifest ----------------
         val manifestEntry = entries.firstOrNull { it.name == "AndroidManifest.xml" }
@@ -93,6 +110,10 @@ class AppCloneBuilder {
         val newManifest = BinaryXml.write(doc)
         diag.log("Manifest: ${request.originalPackage} -> ${request.clonePackage}, " +
                 "authorities=${manifestResult.authorityMap.size}, sharedUserIdRemoved=${manifestResult.removedSharedUserId}")
+        if (manifestResult.appliedOptions.isNotEmpty()) {
+            diag.log("General options applied: ${manifestResult.appliedOptions.joinToString("; ")}")
+        }
+        manifestResult.warnings.forEach { diag.warn("Manifest option: $it") }
 
         // ---------------- dex (FULL REBUILD via dexlib2) ----------------
         // The string pool is rebuilt, so replacements may be any length —

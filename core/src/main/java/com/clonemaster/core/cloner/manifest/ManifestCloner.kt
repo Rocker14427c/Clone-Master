@@ -14,7 +14,11 @@ data class ManifestTransformResult(
     val removedSharedUserId: Boolean,
     val namespaces: Map<String, String>,
     /** Component/instrumentation names that were rewritten (for diagnostics). */
-    val rewrittenComponentNames: List<String> = emptyList()
+    val rewrittenComponentNames: List<String> = emptyList(),
+    /** Optional-feature effects actually applied (label/version overrides). */
+    val appliedOptions: List<String> = emptyList(),
+    /** Non-fatal issues (e.g. requested override whose attribute was absent). */
+    val warnings: List<String> = emptyList()
 )
 
 /**
@@ -118,7 +122,102 @@ class ManifestCloner {
             if (changed) doc.setStringValue(authAttr, newValue)
         }
 
-        return ManifestTransformResult(newPkg, authorityMap, removedShared, nsMap, rewrittenNames)
+        // 5. version overrides – MODIFY-ONLY policy: binary-XML attribute
+        //    insertion is unsafe (attributes are indexed by the string pool /
+        //    resource map), so an absent attribute is reported, never added.
+        val warnings = mutableListOf<String>()
+        val applied = mutableListOf<String>()
+        request.versionNameOverride?.let { vn ->
+            val a = findAndroidAttr(doc, manifest, androidNsIdx, "versionName")
+            if (a != null) {
+                doc.setStringValue(a, vn)
+                applied += "versionName -> \"$vn\""
+            } else {
+                warnings += "versionName override requested but the source manifest has no android:versionName – untouched"
+            }
+        }
+        request.versionCodeOverride?.let { vc ->
+            val a = findAndroidAttr(doc, manifest, androidNsIdx, "versionCode")
+            if (a != null) {
+                val v = vc.coerceIn(1, 2_100_000_000).toInt()
+                a.dataType = BinaryXml.Attribute.TYPE_INT
+                a.data = v
+                a.rawValue = doc.findString(v.toString())
+                applied += "versionCode -> $v"
+            } else {
+                warnings += "versionCode override requested but the source manifest has no android:versionCode – untouched"
+            }
+        }
+
+        // 6. label override – application label + labels of launcher entry points.
+        request.labelOverride?.let { label ->
+            val appEl = doc.findFirstElement("application")
+            val appLabel = appEl?.let { findAndroidAttr(doc, it, androidNsIdx, "label") }
+            if (appLabel != null) {
+                doc.setStringValue(appLabel, label)
+                applied += "application label -> \"$label\""
+            } else {
+                warnings += "label override requested but <application> has no android:label – untouched"
+            }
+            val n = rewriteLauncherLabels(doc, androidNsIdx, label)
+            if (n > 0) applied += "launcher-activity label(s) -> \"$label\" ($n)"
+        }
+
+        return ManifestTransformResult(newPkg, authorityMap, removedShared, nsMap, rewrittenNames, applied, warnings)
+    }
+
+    /**
+     * Rewrites android:label on activity/activity-alias elements that carry a
+     * MAIN+LAUNCHER intent-filter (i.e. the entry points shown in launchers).
+     * Only existing label attributes are modified; count returned.
+     * Non-launcher components keep their own labels.
+     */
+    private fun rewriteLauncherLabels(doc: Document, androidNsIdx: Int, label: String): Int {
+        var changed = 0
+        var component: Element? = null
+        var inFilter = false
+        var sawMain = false
+        var sawLauncher = false
+        for (n in doc.nodes) when (n) {
+            is BinaryXml.Node.Elem -> {
+                when (doc.elementName(n.element)) {
+                    "activity", "activity-alias" -> if (component == null) {
+                        component = n.element
+                        sawMain = false
+                        sawLauncher = false
+                        inFilter = false
+                    }
+                    "intent-filter" -> if (component != null) inFilter = true
+                    "action" -> if (inFilter) {
+                        val v = findAndroidAttr(doc, n.element, androidNsIdx, "name")?.let { doc.attrValue(it) }
+                        if (v == "android.intent.action.MAIN") sawMain = true
+                    }
+                    "category" -> if (inFilter) {
+                        val v = findAndroidAttr(doc, n.element, androidNsIdx, "name")?.let { doc.attrValue(it) }
+                        if (v == "android.intent.category.LAUNCHER") sawLauncher = true
+                    }
+                }
+            }
+            is BinaryXml.Node.EndElement -> {
+                when (doc.strings.getOrElse(n.name) { "" }) {
+                    "intent-filter" -> inFilter = false
+                    "activity", "activity-alias" -> {
+                        val c = component
+                        if (c != null && sawMain && sawLauncher) {
+                            val l = findAndroidAttr(doc, c, androidNsIdx, "label")
+                            if (l != null) {
+                                doc.setStringValue(l, label)
+                                changed++
+                            }
+                        }
+                        component = null
+                        inFilter = false
+                    }
+                }
+            }
+            else -> {}
+        }
+        return changed
     }
 
     /**

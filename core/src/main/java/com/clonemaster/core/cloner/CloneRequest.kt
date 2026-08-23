@@ -33,6 +33,21 @@ data class CloneRequest(
     val extraAssets: Map<String, ByteArray> = emptyMap(),
     /** When true, the application class is wrapped with the hook application class. (Phase 2) */
     val wrapApplication: Boolean = false,
-    /** Optional app label override (not yet supported in native path). */
-    val labelOverride: String? = null
+    /**
+     * Optional app label override (General > Clone App Name). Applied as a
+     * literal string to <application android:label> and to labels of
+     * MAIN+LAUNCHER activities/aliases that carry an explicit label.
+     * Modify-only: attributes are never added, so missing labels are reported
+     * as warnings instead.
+     */
+    val labelOverride: String? = null,
+    /** Optional versionName override (manifest android:versionName; modify-only). */
+    val versionNameOverride: String? = null,
+    /** Optional versionCode override (manifest android:versionCode; modify-only). */
+    val versionCodeOverride: Long? = null,
+    /**
+     * When true, known branding asset files (asset path contains "branding"
+     * or "app_cloner", case-insensitive) are dropped from the clone.
+     */
+    val removeBranding: Boolean = false
 )

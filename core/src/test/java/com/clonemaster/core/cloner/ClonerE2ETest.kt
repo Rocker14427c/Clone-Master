@@ -373,4 +373,132 @@ class ClonerE2ETest {
     private fun le32(b: ByteArray, o: Int): Long =
         (b[o].toLong() and 0xFF) or ((b[o + 1].toLong() and 0xFF) shl 8) or
                 ((b[o + 2].toLong() and 0xFF) shl 16) or ((b[o + 3].toLong() and 0xFF) shl 24)
+
+    // ------------------------------------------------ P0-1 general-options fixture
+
+    /** Manifest with versionName/versionCode, an app label, one launcher and one plain activity. */
+    private fun buildGeneralManifest(pkg: String): ByteArray {
+        val doc = BinaryXml.Document()
+        val androidNs = doc.addString("http://schemas.android.com/apk/res/android")
+        doc.nodes.add(BinaryXml.Node.NamespaceStart(doc.addString("android"), androidNs, 1))
+        val manifest = BinaryXml.Element(1, BinaryXml.NO_INDEX, doc.addString("manifest"), mutableListOf())
+        fnAttr(doc, manifest, "package", null, pkg)
+        fnAttr(doc, manifest, "versionName", androidNs, "1.0")
+        fnAttr(doc, manifest, "versionCode", androidNs, "1") // string-typed on purpose (fixture)
+        val app = BinaryXml.Element(2, BinaryXml.NO_INDEX, doc.addString("application"), mutableListOf())
+        fnAttr(doc, app, "label", androidNs, "TestApp")
+        val home = BinaryXml.Element(3, BinaryXml.NO_INDEX, doc.addString("activity"), mutableListOf())
+        fnAttr(doc, home, "name", androidNs, "$pkg.HomeActivity")
+        fnAttr(doc, home, "label", androidNs, "Home")
+        val filter = BinaryXml.Element(4, BinaryXml.NO_INDEX, doc.addString("intent-filter"), mutableListOf())
+        val action = BinaryXml.Element(4, BinaryXml.NO_INDEX, doc.addString("action"), mutableListOf())
+        fnAttr(doc, action, "name", androidNs, "android.intent.action.MAIN")
+        val category = BinaryXml.Element(4, BinaryXml.NO_INDEX, doc.addString("category"), mutableListOf())
+        fnAttr(doc, category, "name", androidNs, "android.intent.category.LAUNCHER")
+        val settings = BinaryXml.Element(5, BinaryXml.NO_INDEX, doc.addString("activity"), mutableListOf())
+        fnAttr(doc, settings, "name", androidNs, "$pkg.SettingsActivity")
+        fnAttr(doc, settings, "label", androidNs, "Settings")
+        fun end(e: BinaryXml.Element) = BinaryXml.Node.EndElement(e.name, BinaryXml.NO_INDEX)
+        doc.nodes.add(BinaryXml.Node.Elem(manifest))
+        doc.nodes.add(BinaryXml.Node.Elem(app))
+        doc.nodes.add(BinaryXml.Node.Elem(home))
+        doc.nodes.add(BinaryXml.Node.Elem(filter))
+        doc.nodes.add(BinaryXml.Node.Elem(action)); doc.nodes.add(end(action))
+        doc.nodes.add(BinaryXml.Node.Elem(category)); doc.nodes.add(end(category))
+        doc.nodes.add(end(filter))
+        doc.nodes.add(end(home))
+        doc.nodes.add(BinaryXml.Node.Elem(settings)); doc.nodes.add(end(settings))
+        doc.nodes.add(end(app))
+        doc.nodes.add(end(manifest))
+        return BinaryXml.write(doc)
+    }
+
+    private fun buildGeneralApk(extraEntries: List<ZipIO.Entry> = emptyList()): ByteArray {
+        val manifest = buildGeneralManifest(ORIG)
+        val dex = buildRealDex(
+            "Lcom/example/test/HomeActivity;",
+            "Lcom/example/test/SettingsActivity;",
+            strings = listOf(ORIG)
+        )
+        val arsc = ByteArray(64) { 0 }
+        val base = mutableListOf<ZipIO.Entry>()
+        base.add(ZipIO.Entry("AndroidManifest.xml", ZipIO.STORED, crc(manifest), manifest.size.toLong(), manifest.size.toLong(), 0, manifest))
+        base.add(ZipIO.Entry("classes.dex", ZipIO.STORED, crc(dex), dex.size.toLong(), dex.size.toLong(), 0, dex))
+        base.add(ZipIO.Entry("resources.arsc", ZipIO.STORED, crc(arsc), arsc.size.toLong(), arsc.size.toLong(), 0, arsc))
+        base.addAll(extraEntries)
+        return ZipIO().write(base, emptyMap(), emptyMap())
+    }
+
+    // ------------------------------------------------ P0-1 general-options tests
+
+    @Test
+    fun `general options ON - label, versionName, versionCode reach the native clone`() {
+        val src = buildGeneralApk()
+        val request = CloneRequest(
+            originalPackage = ORIG,
+            clonePackage = CLONE,
+            labelOverride = "Cloned App",
+            versionNameOverride = "2.3.4",
+            versionCodeOverride = 77L
+        )
+        val product = AppCloneBuilder().build(src, request)
+        assertFalse("build must succeed: ${product.diag.errors}", product.diag.hasErrors)
+        val doc = BinaryXml.read(ZipIO.read(product.apk).first { it.name == "AndroidManifest.xml" }.compressedData)
+        val manifest = doc.findFirstElement()!!
+        var vName: String? = null
+        var vCode: BinaryXml.Attribute? = null
+        for (a in manifest.attributes) when (doc.attrName(a)) {
+            "versionName" -> vName = doc.attrValue(a)
+            "versionCode" -> vCode = a
+        }
+        assertEquals("2.3.4", vName)
+        requireNotNull(vCode)
+        assertEquals(BinaryXml.Attribute.TYPE_INT, vCode!!.dataType)
+        assertEquals(77, vCode!!.data)
+        val appLabel = doc.findFirstElement("application")
+            ?.let { doc.findAttr(it, "label")?.let { a -> doc.attrValue(a) } }
+        assertEquals("Cloned App", appLabel)
+        val labels = doc.elements().filter { doc.elementName(it) == "activity" }.associate {
+            doc.attrValue(doc.findAttr(it, "name")!!) to doc.findAttr(it, "label")?.let { a -> doc.attrValue(a) }
+        }
+        assertEquals("Cloned App", labels["$CLONE.HomeActivity"])
+        assertEquals("Settings", labels["$CLONE.SettingsActivity"])
+        assertTrue(product.diag.logs.any { it.contains("General options applied") })
+    }
+
+    @Test
+    fun `general options OFF - versions and labels are untouched`() {
+        val src = buildGeneralApk()
+        val product = AppCloneBuilder().build(src, CloneRequest(originalPackage = ORIG, clonePackage = CLONE))
+        assertFalse("build must succeed: ${product.diag.errors}", product.diag.hasErrors)
+        val doc = BinaryXml.read(ZipIO.read(product.apk).first { it.name == "AndroidManifest.xml" }.compressedData)
+        val manifest = doc.findFirstElement()!!
+        val vName = manifest.attributes.first { doc.attrName(it) == "versionName" }
+        assertEquals("1.0", doc.attrValue(vName))
+        val appLabel = doc.findFirstElement("application")
+            ?.let { doc.findAttr(it, "label")?.let { a -> doc.attrValue(a) } }
+        assertEquals("TestApp", appLabel)
+        assertTrue(
+            "no general options may be reported for a clean clone: ${product.manifestResult?.appliedOptions}",
+            product.manifestResult?.appliedOptions?.isEmpty() != false
+        )
+    }
+
+    @Test
+    fun `removeBranding drops only branding assets - ON and OFF`() {
+        val branding = storedEntry("assets/app_cloner_branding.png", byteArrayOf(9, 9))
+        val keep = storedEntry("assets/keep.txt", byteArrayOf(1, 2, 3))
+        val src = buildGeneralApk(extraEntries = listOf(branding, keep))
+        val on = AppCloneBuilder().build(
+            src, CloneRequest(originalPackage = ORIG, clonePackage = CLONE, removeBranding = true)
+        )
+        assertFalse("build must succeed: ${on.diag.errors}", on.diag.hasErrors)
+        val onNames = ZipIO.read(on.apk).map { it.name }
+        assertFalse("branding asset must be dropped", onNames.contains("assets/app_cloner_branding.png"))
+        assertTrue("unrelated assets must be kept", onNames.contains("assets/keep.txt"))
+        val off = AppCloneBuilder().build(
+            src, CloneRequest(originalPackage = ORIG, clonePackage = CLONE, removeBranding = false)
+        )
+        assertTrue("OFF state must not modify assets", ZipIO.read(off.apk).map { it.name }.contains("assets/app_cloner_branding.png"))
+    }
 }

@@ -335,14 +335,28 @@ class CloneEngine(private val context: Context) {
             if (apkBytes.isEmpty()) throw IllegalStateException("Source APK is empty: ${apkPath.absolutePath}")
 
             if (OptionalFeatures.anyEnabled(config)) {
-                diagnostics.warn("Optional features are enabled, but the native pipeline currently applies clean-clone mechanics only (feature injection is a later phase – reported honestly, not hidden)")
+                diagnostics.warn("Runtime-hook options are enabled. The native pipeline applies General build options (label/version/branding) and clean-clone mechanics; runtime feature injection is phase 2 (reported honestly, not hidden)")
             }
+
+            // General options reach the native pipeline here. Version overrides
+            // are only forwarded when they DIFFER from the source values so an
+            // untouched default (""/1) never clobbers the real version.
+            val (srcVersionName, srcVersionCode) = readSourceVersions(apkBytes)
+            val versionNameOverride = config.versionName
+                .takeIf { it.isNotBlank() && it != srcVersionName }
+            val versionCodeOverride = config.versionCode
+                .takeIf { it > 0 && it != srcVersionCode }
+            val labelOverride = config.appName.takeIf { it.isNotBlank() }
 
             val request = com.clonemaster.core.cloner.CloneRequest(
                 originalPackage = config.originalPackage,
                 clonePackage = config.clonePackage,
                 authorityMap = emptyMap(), // auto-planned deterministically by the builder
-                extraAssets = mapOf("clone_config.json" to gsonConfig(config).toByteArray(Charsets.UTF_8))
+                extraAssets = mapOf("clone_config.json" to gsonConfig(config).toByteArray(Charsets.UTF_8)),
+                labelOverride = labelOverride,
+                versionNameOverride = versionNameOverride,
+                versionCodeOverride = versionCodeOverride,
+                removeBranding = config.removeBranding
             )
             onProgress("Transforming manifest & DEX...")
             val builder = com.clonemaster.core.cloner.AppCloneBuilder()
@@ -394,6 +408,48 @@ class CloneEngine(private val context: Context) {
         } catch (e: Exception) {
             diagnostics.warn("Signing identity persistence failed (${e.message}) – using in-process identity")
             return com.clonemaster.core.cloner.AppCloneBuilder.Companion.cachedSignMaterial()
+        }
+    }
+
+    /**
+     * Reads (versionName, versionCode) from the SOURCE APK's binary manifest so
+     * that untouched config defaults never overwrite the real versions.
+     * Falls back to (null, null) — overrides are then applied as requested.
+     */
+    private fun readSourceVersions(apkBytes: ByteArray): Pair<String?, Long?> {
+        return try {
+            val entries = com.clonemaster.core.cloner.apk.ZipIO.read(apkBytes)
+            val mEntry = entries.firstOrNull { it.name == "AndroidManifest.xml" } ?: return null to null
+            val data = if (mEntry.method == com.clonemaster.core.cloner.apk.ZipIO.STORED) mEntry.compressedData
+            else {
+                val out = java.io.ByteArrayOutputStream(mEntry.uncompressedSize.toInt().coerceAtLeast(16))
+                val inf = java.util.zip.Inflater(true)
+                try {
+                    inf.setInput(mEntry.compressedData)
+                    val buf = ByteArray(8192)
+                    while (!inf.finished()) {
+                        val n = inf.inflate(buf)
+                        if (n == 0 && inf.needsInput()) break
+                        out.write(buf, 0, n)
+                    }
+                } finally { inf.end() }
+                out.toByteArray()
+            }
+            val doc = com.clonemaster.core.cloner.axml.BinaryXml.read(data)
+            val manifest = doc.findFirstElement() ?: return null to null
+            var vName: String? = null
+            var vCode: Long? = null
+            for (a in manifest.attributes) {
+                when (doc.attrName(a)) {
+                    "versionName" -> vName = doc.attrValue(a)
+                    "versionCode" -> vCode = doc.attrValue(a).toLongOrNull()
+                        ?: a.data.toLong().takeIf { a.dataType == com.clonemaster.core.cloner.axml.BinaryXml.Attribute.TYPE_INT }
+                }
+            }
+            vName to vCode
+        } catch (e: Exception) {
+            diagnostics.warn("Could not read source versions (${e.message}) – version overrides applied as-is")
+            null to null
         }
     }
 
