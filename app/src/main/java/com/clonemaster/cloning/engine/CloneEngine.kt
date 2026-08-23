@@ -58,6 +58,26 @@ class CloneEngine(private val context: Context) {
             val apkPath = getApkPath(config.originalPackage)
             if (!apkPath.exists()) throw IllegalStateException("APK not found: ${config.originalPackage}")
 
+            // SPLIT APK GUARD (device-verified need): Play App Bundle installs
+            // ship as base.apk + config/feature splits. Cloning only base.apk
+            // produces a clone missing its split resources — a guaranteed
+            // broken or crashing app. Fail EARLY and HONESTLY with the reason
+            // (small apps like IG Lite are frequently split on modern devices),
+            // until the P2 split-merge phase exists.
+            val splitDirs = try {
+                context.packageManager.getApplicationInfo(config.originalPackage, 0).splitSourceDirs
+            } catch (e: Exception) {
+                null
+            }
+            if (splitDirs != null && splitDirs.isNotEmpty()) {
+                throw IllegalStateException(
+                    "Split-APK app: ${config.originalPackage} is installed as ${splitDirs.size + 1} split APKs " +
+                            "(App Bundle delivery). Cloning split installs is not supported yet (missing split " +
+                            "resources would produce a broken clone). Build/split-merge support: roadmap phase P2. " +
+                            "No clone was produced."
+                )
+            }
+
             val apktool = findApktool()
             if (apktool == null) {
                 // apktool is a JVM tool and CANNOT run on Android; the previous

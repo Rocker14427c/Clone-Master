@@ -63,8 +63,8 @@ object V2Scheme {
             val eocd = findEocd(unsignedApk)
             val cdU = le32(unsignedApk, eocd + 16) // cd offset in the unsigned apk == block start
             val cdEnd = eocd
-            val prefix = unsignedApk.copyOfRange(0, cdU)
-            val cd = unsignedApk.copyOfRange(cdU, cdEnd)
+            // Memory: digest over SLICES of the unsigned APK instead of copying
+            // prefix/cd (a whole extra APK copy in RAM for large apps).
             val eocdBytes = unsignedApk.copyOfRange(cdEnd, unsignedApk.size)
 
             // Payload size is independent of digest/signature CONTENT (fixed sizes);
@@ -79,7 +79,11 @@ object V2Scheme {
             val blockTotal = 8 + blockL                     // the first [u64 L]
 
             // Digest: EOCD cd-offset field replaced with the SIGNING BLOCK offset (= cdU).
-            val contentDigest = computeContentDigests(prefix, cd, eocdBytes, cdU.toLong())
+            val contentDigest = computeChunkedDigest(
+                Slice(unsignedApk, 0, cdU),
+                Slice(unsignedApk, cdU, cdEnd - cdU),
+                run { val p = patchedEocd(eocdBytes, cdU.toLong()); Slice(p, 0, p.size) }
+            )
             val signedData = buildSignedData(contentDigest, certDer)
             val sig = Signature.getInstance("SHA256withRSA")
             sig.initSign(keyPair.private)
@@ -88,11 +92,12 @@ object V2Scheme {
             val payload = buildV2Payload(signedData, signature, keyPair.public.encoded)
             val block = buildBlock(payload, blockL)
 
-            val out = ByteArrayOutputStream()
-            out.write(unsignedApk, 0, cdU)
-            out.write(block)
-            out.write(unsignedApk, cdU, unsignedApk.size - cdU)
-            val finalBytes = out.toByteArray()
+            // Memory: assemble into an exact-size array (a growing buffer peaks
+            // at ~3x the APK size; this peaks at 1x).
+            val finalBytes = ByteArray(unsignedApk.size + block.size)
+            System.arraycopy(unsignedApk, 0, finalBytes, 0, cdU)
+            System.arraycopy(block, 0, finalBytes, cdU, block.size)
+            System.arraycopy(unsignedApk, cdU, finalBytes, cdU + block.size, unsignedApk.size - cdU)
             // Central directory really starts after the block:
             val finalEocd = findEocd(finalBytes)
             val newCdOffset = (cdU.toLong() + blockTotal).toInt()
@@ -100,8 +105,6 @@ object V2Scheme {
             return finalBytes
         }
 
-        private fun computeContentDigests(prefix: ByteArray, cd: ByteArray, eocd: ByteArray, patchedCdOffset: Long): ByteArray =
-            computeChunkedDigest(prefix, cd, patchedEocd(eocd, patchedCdOffset))
 
         private fun buildSignedData(contentDigest: ByteArray, cert: ByteArray): ByteArray {
             // apksig layout: lp of [digestsSeq][certSeq][attrs(empty)][reserved(empty)]
@@ -203,10 +206,12 @@ object V2Scheme {
             val cert = cf.generateCertificate(ByteArrayInputStream(certDer)) as X509Certificate
 
             // recompute content digest with the EOCD field patched to blockStart
-            val prefix = apk.copyOfRange(0, blockStart)
-            val cd = apk.copyOfRange(cdOffset, eocd) // central directory in the final file
             val eocdBytes = apk.copyOfRange(eocd, apk.size)
-            val expected = computeChunkedDigest(prefix, cd, patchedEocd(eocdBytes, blockStart.toLong()))
+            val expected = computeChunkedDigest(
+                Slice(apk, 0, blockStart),
+                Slice(apk, cdOffset, eocd - cdOffset),
+                run { val p = patchedEocd(eocdBytes, blockStart.toLong()); Slice(p, 0, p.size) }
+            )
             val digestOk = MessageDigest.isEqual(expected, contentDigest)
 
             val verifier = Signature.getInstance("SHA256withRSA")
@@ -224,23 +229,32 @@ object V2Scheme {
         }
     }
 
+    /** Memory-friendly view over a byte source: data + offset + length (no copy). */
+    data class Slice(val data: ByteArray, val off: Int, val len: Int)
+
     /** apksig CHUNKED_SHA256: per-segment 1 MiB chunks, each hashed over 0xA5 + u32LE(len) + bytes;
      *  final digest = SHA-256 over 0x5A + u32LE(chunkCount) + concat(chunkDigests). */
-    fun computeChunkedDigest(vararg segments: ByteArray): ByteArray {
+    fun computeChunkedDigest(vararg segments: ByteArray): ByteArray =
+        computeChunkedDigest(*segments.map { Slice(it, 0, it.size) }.toTypedArray())
+
+    /** Slice-based overload: identical digest, but no segment copies (large-APK memory). */
+    fun computeChunkedDigest(vararg segments: Slice): ByteArray {
         var chunkCount = 0
+        // chunkDigests: 32 bytes per chunk; even a 1 GiB APK is just ~32 KiB here.
         val chunkDigests = ByteArrayOutputStream()
         for (segment in segments) {
-            var off = 0
-            while (off < segment.size) {
-                val n = minOf(CHUNK_SIZE, segment.size - off)
+            var pos = segment.off
+            val end = segment.off + segment.len
+            while (pos < end) {
+                val n = minOf(CHUNK_SIZE, end - pos)
                 val d = MessageDigest.getInstance("SHA-256")
                 d.update(0xA5.toByte())
                 putLe32(d, n)
-                d.update(segment, off, n)
+                d.update(segment.data, pos, n)
                 val cdg = d.digest()
                 chunkDigests.write(cdg, 0, cdg.size)
                 chunkCount++
-                off += n
+                pos += n
             }
         }
         val out = MessageDigest.getInstance("SHA-256")

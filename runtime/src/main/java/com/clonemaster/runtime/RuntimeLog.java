@@ -6,6 +6,10 @@ import android.util.Log;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
+
+import android.content.ContentResolver;
+import android.net.Uri;
+import android.os.Build;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -29,10 +33,13 @@ public final class RuntimeLog {
     private static final long MAX_BYTES = 128L * 1024L;
     private static volatile boolean fileEnabled = false;
     private static volatile File file = null;
+    private static volatile boolean publicEnabled = false;
+    private static volatile Uri publicUri = null;
+    private static volatile Context appCtx = null;
 
     private RuntimeLog() {}
 
-    /** Enables the file sink. Called once by RuntimeInit after config parse. Never throws. */
+    /** Enables the file sinks. Called once by RuntimeInit after config parse. Never throws. */
     public static synchronized void enableFile(Context ctx) {
         try {
             File dir = new File(ctx.getFilesDir(), "cloner");
@@ -51,25 +58,97 @@ public final class RuntimeLog {
             file = null;
             appendNote("file sink disabled (" + t.getMessage() + ")");
         }
+        // Public sink: Download/CloneMasterRT-<pkg>.log — reachable without adb.
+        publicUri = null;
+        if (Build.VERSION.SDK_INT >= 29) {
+            try {
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put(android.provider.MediaStore.Downloads.DISPLAY_NAME,
+                        "CloneMasterRT-" + ctx.getPackageName() + ".log");
+                v.put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain");
+                    Uri existing = findExisting(ctx);
+                if (existing != null) {
+                    // fresh log per install session: replace the old one
+                    try { ctx.getContentResolver().delete(existing, null, null); } catch (Throwable ignored) {}
+                }
+                Uri uri = ctx.getContentResolver()
+                        .insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                publicUri = uri;
+                publicEnabled = uri != null;
+                appCtx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+                append("I", "public log sink: Download/CloneMasterRT-" + ctx.getPackageName() + ".log", null);
+            } catch (Throwable t) {
+                publicEnabled = false;
+                publicUri = null;
+                appendNote("public log sink unavailable: " + t.getMessage());
+            }
+        }
+    }
+
+    private static Uri findExisting(Context ctx) {
+        try {
+            android.database.Cursor c = ctx.getContentResolver().query(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    new String[]{android.provider.MediaStore.Downloads._ID},
+                    android.provider.MediaStore.Downloads.DISPLAY_NAME + "=?",
+                    new String[]{"CloneMasterRT-" + ctx.getPackageName() + ".log"}, null);
+            if (c != null) {
+                try {
+                    if (c.moveToFirst()) {
+                        long id = c.getLong(0);
+                        return android.content.ContentUris.withAppendedId(
+                                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, id);
+                    }
+                } finally { c.close(); }
+            }
+        } catch (Throwable ignored) {}
+        return null;
     }
 
     public static void i(String msg) {
         try { Log.i(RuntimeInit.TAG, msg); } catch (Throwable ignored) {}
         if (fileEnabled) append("I", msg, null);
+        if (publicEnabled) appendPublic("I", msg, null);
     }
 
     public static void e(String msg, Throwable t) {
         try { Log.e(RuntimeInit.TAG, msg, t); } catch (Throwable ignored) {}
         if (fileEnabled) append("E", msg, t);
+        if (publicEnabled) appendPublic("E", msg, t);
     }
 
     public static void w(String msg, Throwable t) {
         try { Log.w(RuntimeInit.TAG, msg, t); } catch (Throwable ignored) {}
         if (fileEnabled) append("W", msg, t);
+        if (publicEnabled) appendPublic("W", msg, t);
     }
 
     private static void appendNote(String note) {
         try { Log.w(RuntimeInit.TAG, note); } catch (Throwable ignored) {}
+    }
+
+    private static synchronized void appendPublic(String level, String msg, Throwable t) {
+        Context ctx = appCtx;
+        Uri uri = publicUri;
+        if (ctx == null || uri == null) return;
+        java.io.OutputStream out = null;
+        try {
+            ContentResolver cr = ctx.getContentResolver();
+            out = cr.openOutputStream(uri, "wa");
+            if (out == null) { publicEnabled = false; return; }
+            String line = ts() + " " + level + "/" + RuntimeInit.TAG + ": " + msg + "\n";
+            out.write(line.getBytes("UTF-8"));
+            if (t != null) {
+                String el = ts() + " " + level + "/" + RuntimeInit.TAG + ":   "
+                        + t.getClass().getName() + ": " + t.getMessage() + "\n";
+                out.write(el.getBytes("UTF-8"));
+            }
+            out.flush();
+        } catch (Throwable io) {
+            publicEnabled = false; // fail-off; logcat + private sink remain
+        } finally {
+            if (out != null) try { out.close(); } catch (Throwable ignored) {}
+        }
     }
 
     private static synchronized void append(String level, String msg, Throwable t) {

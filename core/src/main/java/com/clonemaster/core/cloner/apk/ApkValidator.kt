@@ -85,6 +85,23 @@ class ApkValidator {
 
             val dexEntries = entries.filter { it.name.matches(Regex("classes(\\d*)\\.dex")) }
 
+            // ---- payload-packed app fingerprint ----
+            // Some apps ship their real code compressed/encrypted in assets
+            // (assets/classes*.dex.xz|gz|lz4|zip, ...) and load it themselves at
+            // runtime (packers/protectors, self-updaters). Manifest components
+            // then resolve to classes that live only inside those payloads,
+            // which this engine cannot rewrite — every such clone is broken at
+            // launch. Refuse with a precise explanation instead of a generic
+            // "classes missing" list.
+            val payloadDex = names.filter {
+                it.matches(Regex("assets/.*dex.*\\.(xz|gz|lz4|zip|jar)"))
+                        || it.matches(Regex("assets/\\S+\\.dex\\.(xz|gz|lz4)"))
+            }
+            if (payloadDex.isNotEmpty()) {
+                check("app ships code in compressed/encrypted payloads (not clonable): ${payloadDex.take(4).joinToString()}", false)
+                return Report(false, checks, errors)
+            }
+
             // ---- semantic: every manifest component must resolve to a class in DEX ----
             // (after a package rename, absolute/relative component names must match the
             // classes the DEX engine moved to the new package; a missing component is an

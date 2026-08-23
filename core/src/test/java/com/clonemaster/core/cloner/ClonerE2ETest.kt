@@ -23,6 +23,7 @@ import org.jf.dexlib2.writer.io.MemoryDataStore
 import org.jf.dexlib2.writer.pool.DexPool
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
@@ -505,7 +506,8 @@ class ClonerE2ETest {
     // ------------------------------------------------ P0-2 runtime-injection fixtures
 
     /** Manifest whose <application> optionally carries android:name=$pkg.MyApp, plus one activity. */
-    private fun buildAppManifest(pkg: String, withAppName: Boolean = true, appName: String? = null): ByteArray {
+    private fun buildAppManifest(pkg: String, withAppName: Boolean = true, appName: String? = null,
+                                 appComponentFactory: String? = null): ByteArray {
         val doc = BinaryXml.Document()
         val androidNs = doc.addString("http://schemas.android.com/apk/res/android")
         doc.nodes.add(BinaryXml.Node.NamespaceStart(doc.addString("android"), androidNs, 1))
@@ -513,6 +515,7 @@ class ClonerE2ETest {
         fnAttr(doc, manifest, "package", null, pkg)
         val app = BinaryXml.Element(2, BinaryXml.NO_INDEX, doc.addString("application"), mutableListOf())
         if (withAppName) fnAttr(doc, app, "name", androidNs, appName ?: "$pkg.MyApp")
+        if (appComponentFactory != null) fnAttr(doc, app, "appComponentFactory", androidNs, appComponentFactory)
         val activity = BinaryXml.Element(3, BinaryXml.NO_INDEX, doc.addString("activity"), mutableListOf())
         fnAttr(doc, activity, "name", androidNs, "$pkg.MainActivity")
         fun end(e: BinaryXml.Element) = BinaryXml.Node.EndElement(e.name, BinaryXml.NO_INDEX)
@@ -524,8 +527,9 @@ class ClonerE2ETest {
         return BinaryXml.write(doc)
     }
 
-    private fun buildRuntimeApk(withAppName: Boolean = true, appName: String? = null): ByteArray {
-        val manifest = buildAppManifest(ORIG, withAppName, appName)
+    private fun buildRuntimeApk(withAppName: Boolean = true, appName: String? = null,
+                                appComponentFactory: String? = null): ByteArray {
+        val manifest = buildAppManifest(ORIG, withAppName, appName, appComponentFactory)
         val dex = buildRealDex(
             "Lcom/example/test/MyApp;",
             "Lcom/example/test/MainActivity;",
@@ -541,6 +545,7 @@ class ClonerE2ETest {
 
     private fun fakeRuntimeDex(): ByteArray = buildRealDex(
         "Lcom/clonemaster/runtime/HookApplication;",
+        "Lcom/clonemaster/runtime/HookComponentFactory;",
         "Lcom/clonemaster/runtime/RuntimeInit;",
         strings = listOf("cloner_runtime.json")
     )
@@ -570,7 +575,7 @@ class ClonerE2ETest {
     // ------------------------------------------------ P0-2 runtime-injection tests
 
     @Test
-    fun `runtime injection wraps application, appends dex, writes meta`() {
+    fun `runtime injection prefers factory hook, application stays original, meta written`() {
         val src = buildRuntimeApk(withAppName = true)
         val request = CloneRequest(ORIG, CLONE, wrapApplication = true, runtimeDex = fakeRuntimeDex())
         val product = AppCloneBuilder().build(src, request)
@@ -582,21 +587,45 @@ class ClonerE2ETest {
         assertTrue("runtime meta written", names.contains("assets/cloner_runtime.json"))
 
         val meta = String(entryData(entries.first { it.name == "assets/cloner_runtime.json" }))
-        assertTrue("original class preserved in meta: $meta",
+        assertTrue("original class recorded in meta: $meta",
             meta.contains("\"originalApplication\":\"$CLONE.MyApp\""))
+        assertTrue("factory hook mode in meta: $meta", meta.contains("\"hookMode\":\"factory\""))
 
         val doc = readManifest(product)
-        val appName = doc.findFirstElement("application")
-            ?.let { doc.findAttr(it, "name")?.let { a -> doc.attrValue(a) } }
-        assertEquals("com.clonemaster.runtime.HookApplication", appName)
+        val appEl = doc.findFirstElement("application")!!
+        val appName = doc.findAttr(appEl, "name")?.let { a -> doc.attrValue(a) }
+        assertEquals("original application class PRESERVED (factory mode, renamed only)", "$CLONE.MyApp", appName)
+        val factory = doc.findAttr(appEl, "appComponentFactory")?.let { a -> doc.attrValue(a) }
+        assertEquals("com.clonemaster.runtime.HookComponentFactory", factory)
+        assertEquals("factory mode reported", "factory", product.manifestResult!!.hookMode)
 
         val rtClasses = DexPackageRewriter.listClasses(entryData(entries.first { it.name == "classes2.dex" }))
-        assertTrue(rtClasses.contains("Lcom/clonemaster/runtime/HookApplication;"))
+        assertTrue(rtClasses.contains("Lcom/clonemaster/runtime/HookComponentFactory;"))
 
-        assertTrue("validator must pass (wrapper resolves): ${ApkValidator().validate(product.apk, request).errors}",
+        assertTrue("validator must pass: ${ApkValidator().validate(product.apk, request).errors}",
             ApkValidator().validate(product.apk, request).ok)
         val v2 = V2Scheme.verify(product.apk)
         assertTrue("v2 must verify: ${v2.message}", v2.verified)
+    }
+
+    @Test
+    fun `runtime injection falls back to application wrap when source declares its own factory`() {
+        val src = buildRuntimeApk(withAppName = true, appComponentFactory = "com.example.SomeStartupFactory")
+        val request = CloneRequest(ORIG, CLONE, wrapApplication = true, runtimeDex = fakeRuntimeDex())
+        val product = AppCloneBuilder().build(src, request)
+        assertFalse("build must succeed: ${product.diag.errors}", product.diag.hasErrors)
+
+        val doc = readManifest(product)
+        val appEl = doc.findFirstElement("application")!!
+        val appName = doc.findAttr(appEl, "name")?.let { a -> doc.attrValue(a) }
+        assertEquals("wrap fallback replaces application class", "com.clonemaster.runtime.HookApplication", appName)
+        val factory = doc.findAttr(appEl, "appComponentFactory")?.let { a -> doc.attrValue(a) }
+        assertEquals("source factory attr untouched in wrap mode", "com.example.SomeStartupFactory", factory)
+        assertEquals("wrap fallback reported", "wrap", product.manifestResult!!.hookMode)
+        val entries = ZipIO.read(product.apk)
+        val meta = String(entryData(entries.first { it.name == "assets/cloner_runtime.json" }))
+        assertTrue("wrap mode in meta: $meta", meta.contains("\"hookMode\":\"wrap\""))
+        assertTrue(ApkValidator().validate(product.apk, request).ok)
     }
 
     @Test
@@ -607,7 +636,7 @@ class ClonerE2ETest {
         assertFalse("build must succeed: ${product.diag.errors}", product.diag.hasErrors)
         val meta = String(entryData(ZipIO.read(product.apk).first { it.name == "assets/cloner_runtime.json" }))
         assertTrue("fileLog flag expected: $meta", meta.contains("\"fileLog\":true"))
-        assertTrue("runtimeVersion 2 expected: $meta", meta.contains("\"runtimeVersion\":2"))
+        assertTrue("runtimeVersion 3 expected: $meta", meta.contains("\"runtimeVersion\":3"))
     }
 
     @Test
@@ -632,7 +661,7 @@ class ClonerE2ETest {
     }
 
     @Test
-    fun `application without name gets wrapped - guarded attribute add, meta has null original`() {
+    fun `application without name gets factory hook - attribute added, meta has null original`() {
         val src = buildRuntimeApk(withAppName = false)
         val request = CloneRequest(ORIG, CLONE, wrapApplication = true, runtimeDex = fakeRuntimeDex())
         val product = AppCloneBuilder().build(src, request)
@@ -640,10 +669,13 @@ class ClonerE2ETest {
         val entries = ZipIO.read(product.apk)
         val meta = String(entryData(entries.first { it.name == "assets/cloner_runtime.json" }))
         assertTrue("null original expected: $meta", meta.contains("\"originalApplication\":null"))
+        assertTrue("factory mode in meta: $meta", meta.contains("\"hookMode\":\"factory\""))
         val doc = readManifest(product)
-        val appName = doc.findFirstElement("application")
-            ?.let { doc.findAttr(it, "name")?.let { a -> doc.attrValue(a) } }
-        assertEquals("com.clonemaster.runtime.HookApplication", appName)
+        val appEl = doc.findFirstElement("application")!!
+        assertNull("no application name may be added in factory mode",
+            doc.findAttr(appEl, "name")?.let { a -> doc.attrValue(a) }?.takeIf { it.isNotEmpty() })
+        val factory = doc.findAttr(appEl, "appComponentFactory")?.let { a -> doc.attrValue(a) }
+        assertEquals("com.clonemaster.runtime.HookComponentFactory", factory)
         assertTrue(ApkValidator().validate(product.apk, request).ok)
     }
 

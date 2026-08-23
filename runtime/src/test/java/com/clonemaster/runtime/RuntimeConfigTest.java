@@ -69,6 +69,22 @@ public class RuntimeConfigTest {
     }
 
     @Test
+    public void hookModeDefaultsToWrapForLegacyMeta() {
+        RuntimeConfig cfg = RuntimeConfig.parse(RUNTIME_META, null);
+        assertEquals("wrap", cfg.hookMode);
+    }
+
+    @Test
+    public void hookModeParsedFromV3Meta() {
+        String metaV3 =
+                "{\"originalApplication\":null,\"runtimeVersion\":3,\"hookMode\":\"factory\",\"fileLog\":true}";
+        RuntimeConfig cfg = RuntimeConfig.parse(metaV3, null);
+        assertNull(cfg.originalApplication);
+        assertEquals("factory", cfg.hookMode);
+        assertTrue(cfg.fileLog);
+    }
+
+    @Test
     public void malformedJsonDegradesToDefaults() {
         RuntimeConfig cfg = RuntimeConfig.parse("{broken", "{\"privacy\": null}");
         assertNull(cfg.originalApplication);

@@ -137,8 +137,7 @@ class CloneOptionsActivity : AppCompatActivity() {
             options = filteredOptions,
             configValues = configValues,
             onOptionChanged = { option, newValue ->
-                com.clonemaster.diagnostics.DiagLog.logOptionChanged(option.id, option.configFieldPath, newValue)
-                updateConfigFromOption(option, newValue)
+                updateConfigFromOption(option, newValue) // logs + syncs configValues centrally
                 // Persist immediately – UI → Configurator → CloneConfig → persistent state
                 configStorage.saveConfiguration(config)
                 updateCompactSummary()
@@ -300,6 +299,14 @@ class CloneOptionsActivity : AppCompatActivity() {
 
     private fun updateConfigFromOption(option: OptionItem, newValue: Any) {
         try {
+            // Single capture point: EVERY option mutation (user switch, dialog,
+            // dropdown, preset-applied row) is logged here. Call-site lambdas
+            // that bypassed logging (preset/load/import adapters) previously
+            // made changes invisible in the report.
+            com.clonemaster.diagnostics.DiagLog.logOptionChanged(option.id, option.configFieldPath, newValue)
+            // Keep the binder mirror map in sync centrally — a stale
+            // configValues entry is what made toggles visually flip back off.
+            configValues[option.configFieldPath] = newValue
             when (option.configFieldPath) {
                 "appName" -> config.appName = newValue as String
                 "clonePackage" -> config.clonePackage = newValue as String

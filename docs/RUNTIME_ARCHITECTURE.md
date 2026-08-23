@@ -59,6 +59,33 @@ Clone `mark.via.gp → mark.via.gp.clone1` twice:
    - `unzip -p clone.apk assets/clone_config.json` shows the enabled values (config actually bundled).
    - Via browsing still works (runtime didn't break the app).
 
+## 5b. Injection modes (v3, v2.3.0-runtime2)
+
+Two ways to boot the runtime inside the clone; the engine picks automatically:
+
+1. **factory (preferred)** — `android:appComponentFactory=com.clonemaster.runtime.HookComponentFactory`
+   is added to `<application>` while the ORIGINAL application class name is kept.
+   The original class remains the process application: `getApplicationContext()`
+   casts in the app's singleton pattern keep working (a wrapper-as-application
+   broke exactly those, on-device: splash stuck + "Exception Happened Thread[main]").
+   The factory registers a boot callback; `RuntimeInit` runs on the first
+   activity creation, and flags are applied to that first activity explicitly
+   (callback snapshot semantics). API 28+ only; ignored gracefully below.
+2. **wrap (fallback)** — only when the source declares its OWN appComponentFactory
+   (cannot chain cleanly): the old `HookApplication` wrapper path is used.
+
+Meta `cloner_runtime.json` v3: `{"originalApplication":...,"runtimeVersion":3,"hookMode":"wrap|factory"[,"fileLog":true]}`.
+Runtime anchor line now includes `mode=...`. Double-hook clones are refused in
+both modes (our own factory/wrapper class prefix detected in the source).
+
+Clone-side observability without adb:
+- **Crash hook** (always installed when the runtime is present): full
+  stacktrace → `Download/CloneMasterRT-<pkg>-crash.txt` (MediaStore, API 29+;
+  private fallback), then chains to the app's own crash handler/UI.
+- **Runtime log** (only when built with fileLog ON): always logcat
+  `CloneMasterRT`; plus `Download/CloneMasterRT-<pkg>.log` (public, per-session
+  replace) and `files/cloner/rt.log` (private, 128 KB cap).
+
 ## 6. Honest limitations (documented, not hidden)
 
 - **V1 runtime delivers exactly 3 feature behaviors**: disableScreenshots, keepScreenAwake, orientationLock. The other runtime options (identity/privacy/networking hooks…) require the hook substrate (P1) — their config is already bundled + contract-pinned; they are NOT yet delivered.

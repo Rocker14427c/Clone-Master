@@ -92,6 +92,12 @@ class OptionsAdapter(
         when (option.controlType) {
             ControlType.SWITCH -> {
                 holder.switchControl?.let { switch ->
+                    // RECYCLE FIX (device-verified): rows are recycled; setting
+                    // isChecked while the PREVIOUS row's listener is still
+                    // attached fires it with the old option, silently writing
+                    // stale values into other options ("turning on one option
+                    // turns another off"). Detach first, set state, re-attach.
+                    switch.setOnCheckedChangeListener(null)
                     switch.isChecked = (currentValue as? Boolean) ?: false
                     switch.setOnCheckedChangeListener { _, isChecked ->
                         configValues[option.configFieldPath] = isChecked
@@ -115,6 +121,7 @@ class OptionsAdapter(
             }
             ControlType.TEXT_FIELD -> {
                 holder.textField?.let { edit ->
+                    edit.setOnFocusChangeListener(null) // recycled rows: detach old listener first
                     edit.setText((currentValue as? String) ?: "")
                     edit.setOnFocusChangeListener { _, hasFocus ->
                         if (!hasFocus) {

@@ -331,7 +331,11 @@ class BuildProgressActivity : AppCompatActivity() {
             val pendingIntent = PendingIntent.getBroadcast(
                 this, 1001,
                 Intent("com.clonemaster.INSTALL_RESULT").setPackage(packageName),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                // MUST be MUTABLE: PackageInstaller fills in EXTRA_STATUS/
+                // EXTRA_STATUS_MESSAGE. With FLAG_IMMUTABLE (Android 12+) the
+                // extras were dropped and the receiver always saw status=-1
+                // -> spurious "UNKNOWN" install failure (device-verified).
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             )
             session.commit(pendingIntent.intentSender)
             textDetail.text = "Installing ${apk.name}…"

@@ -25,8 +25,8 @@ import org.json.JSONObject;
  */
 public final class RuntimeConfig {
 
-    /** v2: meta JSON may carry "fileLog" (clone-side runtime file logging). */
-    public static final int RUNTIME_VERSION = 2;
+    /** v3: meta JSON may carry "hookMode" ("wrap"|"factory"); v2 carried "fileLog". */
+    public static final int RUNTIME_VERSION = 3;
 
     /** Never null; null means "no original Application android:name". */
     public final String originalApplication;
@@ -39,10 +39,13 @@ public final class RuntimeConfig {
     public final int orientationLock;
     /** When true, the runtime mirrors its log lines into files/cloner/rt.log. */
     public final boolean fileLog;
+    /** How the runtime was injected: "wrap" (application wrapper) or "factory"
+     *  (appComponentFactory). Meta v1/v2 had no key -> defaults to "wrap". */
+    public final String hookMode;
 
     private RuntimeConfig(String originalApplication, String clonePackage, String appName,
                           boolean disableScreenshots, boolean keepScreenAwake, int orientationLock,
-                          boolean fileLog) {
+                          boolean fileLog, String hookMode) {
         this.originalApplication = originalApplication;
         this.clonePackage = clonePackage;
         this.appName = appName;
@@ -50,6 +53,7 @@ public final class RuntimeConfig {
         this.keepScreenAwake = keepScreenAwake;
         this.orientationLock = orientationLock;
         this.fileLog = fileLog;
+        this.hookMode = hookMode;
     }
 
     /** Null-safe parse; any malformed/missing input yields a config with all features OFF. */
@@ -61,12 +65,14 @@ public final class RuntimeConfig {
         boolean keepScreenAwake = false;
         int orientationLock = -1;
         boolean fileLog = false;
+        String hookMode = "wrap";
         try {
             if (runtimeJson != null) {
                 JSONObject meta = new JSONObject(runtimeJson);
                 original = meta.optString("originalApplication", null);
                 if (original != null && original.isEmpty()) original = null;
                 fileLog = meta.optBoolean("fileLog", false);
+                hookMode = meta.optString("hookMode", "wrap");
             }
         } catch (Throwable ignored) { /* fail-soft: defaults */ }
         try {
@@ -86,7 +92,7 @@ public final class RuntimeConfig {
             }
         } catch (Throwable ignored) { /* fail-soft: defaults */ }
         return new RuntimeConfig(original, clonePackage, appName,
-                disableScreenshots, keepScreenAwake, orientationLock, fileLog);
+                disableScreenshots, keepScreenAwake, orientationLock, fileLog, hookMode);
     }
 
     /**

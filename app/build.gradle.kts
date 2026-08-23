@@ -11,8 +11,8 @@ android {
         applicationId = "com.clonemaster"
         minSdk = 24
         targetSdk = 34
-        versionCode = 9
-        versionName = "2.2.2-entrypoint"
+        versionCode = 10
+        versionName = "2.3.0-runtime2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = true

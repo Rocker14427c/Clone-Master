@@ -22,7 +22,9 @@ data class ManifestTransformResult(
     /** True when the <application> name was swapped to the runtime wrapper. */
     val wrappedApplication: Boolean = false,
     /** Resolved ORIGINAL application class (clone package, post-rename); null when none. */
-    val originalApplication: String? = null
+    val originalApplication: String? = null,
+    /** How the runtime was hooked into the clone process: "none" | "wrap" | "factory". */
+    val hookMode: String = "none"
 )
 
 /**
@@ -49,6 +51,8 @@ class ManifestCloner {
 
         /** Runtime wrapper class injected into clones when wrapApplication is requested. */
         const val WRAPPER_CLASS = "com.clonemaster.runtime.HookApplication"
+        /** Component-factory hook (preferred injection, API 28+). */
+        const val FACTORY_CLASS = "com.clonemaster.runtime.HookComponentFactory"
         const val RUNTIME_PACKAGE_PREFIX = "com.clonemaster.runtime."
 
         private val COMPONENT_ELEMENTS = setOf(
@@ -130,17 +134,28 @@ class ManifestCloner {
             if (changed) doc.setStringValue(authAttr, newValue)
         }
 
-        // 4b. application wrapper (runtime delivery): swap <application
-        //     android:name> to the runtime HookApplication, remembering the
-        //     ORIGINAL class (which the DEX engine moved into the clone
-        //     package, so resolve relative names against the clone package).
+        // 4b. runtime delivery hook. Preferred mode: appComponentFactory
+        //     (API 28+) — the ORIGINAL application class stays in the manifest
+        //     and stays the process application instance; the runtime boots
+        //     from our factory class only. This avoids the class of startup
+        //     crashes where the app casts getApplication() to its own class
+        //     (wrapper-as-application broke those). Fallback mode: application
+        //     wrapper (when the source declares its own appComponentFactory):
+        //     swap <application android:name> to the runtime HookApplication,
+        //     remembering the ORIGINAL class (which the DEX engine moved into
+        //     the clone package, so resolve relative names against the clone
+        //     package).
         val warnings = mutableListOf<String>()
         val applied = mutableListOf<String>()
         var wrappedApplication = false
+        var hookMode = "none"
         var originalApplication: String? = null
         if (request.wrapApplication) {
             val appEl = doc.findFirstElement("application")
-                ?: error("wrapApplication requested but the manifest has no <application> element")
+                ?: error("runtime hook requested but the manifest has no <application> element")
+            if (androidNsIdx < 0) {
+                error("runtime hook requested but the manifest lacks the android namespace – cannot add attributes safely")
+            }
             val nameAttr = findAndroidAttr(doc, appEl, androidNsIdx, "name")
             val current = nameAttr?.let { doc.attrValue(it) }?.takeIf { it.isNotEmpty() }
             if (current != null && current.startsWith(RUNTIME_PACKAGE_PREFIX)) {
@@ -152,20 +167,35 @@ class ManifestCloner {
                 !current.contains(".") -> request.clonePackage + "." + current
                 else -> current
             }
-            if (nameAttr != null) {
-                doc.setStringValue(nameAttr, WRAPPER_CLASS)
+            val existingFactory = findAndroidAttr(doc, appEl, androidNsIdx, "appComponentFactory")
+                ?.let { doc.attrValue(it) }?.takeIf { it.isNotEmpty() }
+            if (existingFactory == null) {
+                // FACTORY MODE
+                val vIdx = doc.findString(FACTORY_CLASS)
+                appEl.attributes.add(BinaryXml.Attribute(
+                    androidNsIdx, doc.findString("appComponentFactory"), vIdx,
+                    BinaryXml.Attribute.TYPE_STRING, vIdx))
+                hookMode = "factory"
+                applied += "runtime hook: appComponentFactory -> $FACTORY_CLASS (application preserved as ${originalApplication ?: "default"})"
             } else {
-                // Adding an attribute is only safe when the 'name' string and
-                // the android namespace already exist in the document.
-                val nameIdx = doc.strings.indexOf("name")
-                if (nameIdx < 0 || androidNsIdx < 0) {
-                    error("wrapApplication: <application> has no android:name and the string pool lacks 'name' – cannot wrap safely")
+                if (existingFactory.startsWith(RUNTIME_PACKAGE_PREFIX)) {
+                    error("the source APK is already factory-hooked ($existingFactory) – refusing to double-hook; clone the original app instead")
                 }
-                val vIdx = doc.findString(WRAPPER_CLASS)
-                appEl.attributes.add(BinaryXml.Attribute(androidNsIdx, nameIdx, vIdx, BinaryXml.Attribute.TYPE_STRING, vIdx))
+                // WRAP FALLBACK
+                if (nameAttr != null) {
+                    doc.setStringValue(nameAttr, WRAPPER_CLASS)
+                } else {
+                    val nameIdx = doc.strings.indexOf("name")
+                    if (nameIdx < 0) {
+                        error("wrapApplication fallback: <application> has no android:name and the string pool lacks 'name' – cannot wrap safely")
+                    }
+                    val vIdx = doc.findString(WRAPPER_CLASS)
+                    appEl.attributes.add(BinaryXml.Attribute(androidNsIdx, nameIdx, vIdx, BinaryXml.Attribute.TYPE_STRING, vIdx))
+                }
+                hookMode = "wrap"
+                wrappedApplication = true
+                applied += "application wrapped -> $WRAPPER_CLASS (original=${originalApplication ?: "none"}) – fallback mode: source declares appComponentFactory=$existingFactory"
             }
-            wrappedApplication = true
-            applied += "application wrapped -> $WRAPPER_CLASS (original=${originalApplication ?: "none"})"
         }
 
         // 5. version overrides – MODIFY-ONLY policy (label/version): an absent
@@ -208,7 +238,7 @@ class ManifestCloner {
         }
 
         return ManifestTransformResult(newPkg, authorityMap, removedShared, nsMap, rewrittenNames,
-            applied, warnings, wrappedApplication, originalApplication)
+            applied, warnings, wrappedApplication, originalApplication, hookMode)
     }
 
     /**

@@ -163,8 +163,8 @@ class AppCloneBuilder {
         // (wrapApplication); the runtime dex + meta are appended here so the
         // ORIGINAL dex set/order stays untouched and PathClassLoader picks the
         // runtime up as classes(N+1).dex. Fail-closed by design.
-        if (effectiveRequest.wrapApplication && !manifestResult.wrappedApplication) {
-            error("Runtime injection requested but the application wrapper was not applied – refusing to ship a featureless clone")
+        if (effectiveRequest.wrapApplication && manifestResult.hookMode == "none") {
+            error("Runtime injection requested but no manifest hook was applied – refusing to ship a featureless clone")
         }
 
         // ---------------- extra assets ----------------
@@ -172,22 +172,22 @@ class AppCloneBuilder {
         request.extraAssets.forEach { (name, bytes) ->
             additions["assets/" + name.trimStart('/')] = bytes
         }
-        if (manifestResult.wrappedApplication) {
+        if (manifestResult.hookMode != "none") {
             val runtimeDex = effectiveRequest.runtimeDex
             if (runtimeDex == null || runtimeDex.isEmpty()) {
-                error("wrapApplication=true requires CloneRequest.runtimeDex (prebuilt runtime classes.dex) – refusing to ship a featureless clone")
+                error("runtime hook applied requires CloneRequest.runtimeDex (prebuilt runtime classes.dex) – refusing to ship a featureless clone")
             }
             val runtimeDexName = "classes${dexEntries.size + 1}.dex"
             additions[runtimeDexName] = runtimeDex
             val orig = manifestResult.originalApplication
             val origJson = if (orig != null) "\"$orig\"" else "null"
-            // runtimeVersion 2: adds optional "fileLog" key. The key is only
-            // emitted when enabled so a default request produces the minimal
-            // (pre-v2-compatible shape) meta payload.
+            // runtimeVersion 3: carries "hookMode" (wrap|factory). The
+            // "fileLog" key is emitted only when enabled, keeping the default
+            // meta payload minimal.
             val fileLogJson = if (request.runtimeFileLog) ",\"fileLog\":true" else ""
-            val meta = "{\"originalApplication\":$origJson,\"runtimeVersion\":2$fileLogJson}"
+            val meta = "{\"originalApplication\":$origJson,\"runtimeVersion\":3,\"hookMode\":\"${manifestResult.hookMode}\"$fileLogJson}"
             additions["assets/cloner_runtime.json"] = meta.toByteArray(Charsets.UTF_8)
-            diag.log("Runtime injected: application wrapped (original=${orig ?: "none"}), $runtimeDexName (${runtimeDex.size} bytes), assets/cloner_runtime.json written")
+            diag.log("Runtime injected (mode=${manifestResult.hookMode}, original=${orig ?: "none"}), $runtimeDexName (${runtimeDex.size} bytes), assets/cloner_runtime.json written")
         }
 
         // ---------------- pack + sign ----------------

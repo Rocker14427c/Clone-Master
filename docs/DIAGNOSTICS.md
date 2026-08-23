@@ -45,11 +45,14 @@ writing, so the report is safe to share.
 
 - The injected runtime always logs to logcat under the anchor tag
   **`CloneMasterRT`**: `adb logcat | grep CloneMasterRT` shows
-  `runtime v2 loaded: pkg=… original=… screens=… awake=… orient=… fileLog=…`.
-- With "Clone runtime file log" ON at build time, clones additionally write
-  `files/cloner/rt.log` (128 KB cap per launch). On a stock device that file
-  needs root or a debuggable clone to read, so logcat remains the primary
-  channel for clone-side issues.
+  `runtime v3 loaded: pkg=… mode=wrap|factory original=… screens=… awake=… orient=… fileLog=…`.
+- **Crash capture (v2.3.0+, always on when a runtime is injected):** an
+  uncaught exception in the clone writes the FULL stacktrace to
+  `Download/CloneMasterRT-<pkg>-crash.txt` (MediaStore, API 29+; no permission
+  needed), then the app's own crash UI runs as before. Share that file — no adb.
+- **"Clone runtime file log" ON at build time:** additionally mirrors runtime
+  lines to `Download/CloneMasterRT-<pkg>.log` (public) and
+  `files/cloner/rt.log` (private, 128 KB cap).
 
 ## Files & storage budget
 
